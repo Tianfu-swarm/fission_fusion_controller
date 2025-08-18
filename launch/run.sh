@@ -20,8 +20,8 @@ trap cleanup SIGINT
 
 source ~/fission_fusion_ws/install/setup.bash
 # Export necessary environment variables
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/argos3:/home/tianfu/fission_fusion_ws/install/argos3_ros_bridge/lib
-export ARGOS_PLUGIN_PATH=/home/tianfu/fission_fusion_ws/install/argos3_ros_bridge/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/argos3:../../../install/argos3_ros_bridge/lib
+export ARGOS_PLUGIN_PATH=../../../install/argos3_ros_bridge/lib
 
 ROS2_CORES="0-10"     # 分配核 0 到 7 给 ROS 2 节点
 ARGOS_CORE="11-13"       # 分配核 8 给 ARGoS3
@@ -35,7 +35,7 @@ export ROS_DOMAIN_ID=$domain_id
 echo "ROS_DOMAIN_ID set to: $ROS_DOMAIN_ID"
 
 timestamp_result=$(date +"%Y%m%d%H%M")
-results_path="/home/tianfu/fission_fusion_ws/src/data/result_${date_str}${timestamp_result}"
+results_path="../data/result_${date_str}${timestamp_result}"
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
 ros2 launch fission_fusion run.launch.py numbers:=11.0 \

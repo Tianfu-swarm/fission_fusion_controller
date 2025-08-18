@@ -31,7 +31,7 @@ def generate_nodes(context, *args, **kwargs):
                     "early_converge_window": LaunchConfiguration('early_converge_window'),
                     "n_groupsize": LaunchConfiguration('numbers'),
                     "follow_range": LaunchConfiguration('follow_range'),
-                    "controller_type": "sffm",  # or "SDRM", "skybat", etc.
+                    "controller_type": "sffm", 
                 }],
                 remappings=[
                     ('/tf', 'tf'),
@@ -47,7 +47,7 @@ def generate_launch_description():
 
     declare_args = [
         DeclareLaunchArgument('use_sim_time', default_value='false'),
-        DeclareLaunchArgument('results_file_path', default_value='/home/tianfu/fission_fusion_ws/src/fission_fusion/data/output.csv'),
+        DeclareLaunchArgument('results_file_path', default_value='../data/output.csv'),
         DeclareLaunchArgument('isMinCommunication', default_value='true'),
         DeclareLaunchArgument('isConCommunication', default_value='true'),
         DeclareLaunchArgument('isModelworks', default_value='true'),
@@ -66,7 +66,7 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz',
         output='screen',
-        arguments=['-d', "/home/tianfu/fission_fusion_ws/src/fission_fusion/launch/rviz/defaul.rviz"],
+        arguments=['-d', "/rviz/defaul.rviz"],
         condition=IfCondition(LaunchConfiguration('use_rviz')),
         parameters=[{"use_sim_time": LaunchConfiguration('use_sim_time')}]
     )
