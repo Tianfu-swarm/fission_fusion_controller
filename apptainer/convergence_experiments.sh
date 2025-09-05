@@ -58,12 +58,12 @@ ros2 launch fission_fusion_controller run.launch.py numbers:=42.0 \
                                                     follow_range:=10.0 \
                                                     subgroup_size_sigma:=0.0 \
                                                     groupsize_tolerance:=0.0 \
-                                                    K:=800 \
+                                                    K:=1000 \
                                                     early_converge_window:=8 \
                                                     isModelworks:=false \
                                                     isMinCommunication:=true \
                                                     isConCommunication:=true \
-                                                    use_rviz:=true \
+                                                    use_rviz:=false \
                                                     use_sim_time:=true \
                                                     results_file_path:=${results_path}&
 ROS2_PID=$!
@@ -73,7 +73,10 @@ sleep 1
 # 启动 ARGoS3（绑定核心 42-44）
 echo "Starting ARGoS3 on cores $ARGOS_CORES"
 taskset -c $ARGOS_CORES \
-argos3 -c /opt/container_env/fission_fusion_controller_ws/src/fission_fusion_controller/experiments/convergence.argos &
+cd /opt/container_env/fission_fusion_controller_ws/src/fission_fusion_controller/experiments
+export LD_LIBRARY_PATH=/usr/local/lib/argos3:/opt/ros/humble/lib:/opt/container_env/fission_fusion_controller_ws/install/argos3_ros_bridge/lib:$LD_LIBRARY_PATH
+export ARGOS_PLUGIN_PATH=/usr/local/lib/argos3:/opt/container_env/fission_fusion_controller_ws/install/argos3_ros_bridge/lib
+argos3 -c convergence.argos &
 ARGOS_PID=$!
 
 ros2 topic hz /bot0/pose &

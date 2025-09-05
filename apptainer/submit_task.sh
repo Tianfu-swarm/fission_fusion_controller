@@ -1,5 +1,5 @@
 #!/bin/bash
-#$ -N fission_batch_job
+#$ -N convergence_experiments
 #$ -cwd
 #$ -o "logs/output.$JOB_ID.$TASK_ID.log"
 #$ -e "logs/error.$JOB_ID.$TASK_ID.log"
@@ -8,12 +8,12 @@
 #$ -j y
 #$ -pe smp 45
 #$ -l h_vmem=2G
-#$ -l h_rt=20:00:00
+#$ -l h_rt=02:00:00
 
 TASK_ID=${SGE_TASK_ID}
 
 # 子子任务数量设置（每个SGE子任务内部运行多个）
-SUBTASKS_PER_TASK=100
+SUBTASKS_PER_TASK=10
 
 echo "Running on node: $(hostname)"
 echo "Date: $(date)"
