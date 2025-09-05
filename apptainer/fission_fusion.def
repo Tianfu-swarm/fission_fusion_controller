@@ -1,0 +1,100 @@
+Bootstrap: docker
+From: osrf/ros:humble-desktop
+
+%help
+    This is an Apptainer container for the fission_fusion project with ARGoS3.
+
+%labels
+    Author: Tianfu
+    Email: tianfu.zhang@uni-konstanz.de
+    Description: ROS 2 Humble container with fission_fusion and ARGoS3
+
+%environment
+    export CONTAINER_ENV_PATH=/opt/container_env
+    export PATH=$CONTAINER_ENV_PATH/bin:$PATH
+    export LD_LIBRARY_PATH=$CONTAINER_ENV_PATH/lib:$LD_LIBRARY_PATH
+    export PKG_CONFIG_PATH=$CONTAINER_ENV_PATH/lib/pkgconfig
+    export ARGOS_PLUGIN_PATH=$CONTAINER_ENV_PATH/lib/argos3
+    export ARGOS_CONFIG_PATH=$CONTAINER_ENV_PATH/share/argos3
+    export ROS_PACKAGE_PATH=$CONTAINER_ENV_PATH/fission_fusion_controller_ws:$ROS_PACKAGE_PATH
+
+%setup
+    # 创建独立环境，不依赖宿主机
+    mkdir -p /opt/container_env/fission_fusion_controller_ws/src
+    mkdir -p /opt/container_env/bin
+    mkdir -p /opt/container_env/lib
+    mkdir -p /opt/container_env/share
+
+%post -c /bin/bash
+    set -e  # 遇到错误终止执行
+
+     if [ ! -d "/opt/container_env" ]; then
+        mkdir -p /opt/container_env || exit 1
+    fi
+
+    cd /opt/container_env || exit 1
+
+    # 更新系统并安装 ROS 2 依赖
+    apt-get update && apt-get install -y \
+        python3-colcon-common-extensions \
+        build-essential \
+        cmake \
+        git \
+        libyaml-cpp-dev \
+        ros-humble-rclcpp \
+        ros-humble-ament-cmake \
+        ros-humble-ament-cmake-core \
+        ros-humble-std-msgs \
+        ros-humble-yaml-cpp-vendor \
+        ros-humble-angles \
+        ros-humble-nav-msgs \
+        ros-humble-tf2 \
+        ros-humble-tf2-geometry-msgs \
+        ros-humble-geometry-msgs \
+        ros-humble-visualization-msgs \
+        ros-humble-sensor-msgs \
+        libfreeimage-dev \
+        libfreeimageplus-dev \
+        qtbase5-dev \
+        libgsl-dev \
+        freeglut3-dev \
+        libxi-dev \
+        libxmu-dev \
+        liblua5.3-dev \
+        lua5.3 \
+        doxygen \
+        graphviz \
+        libgraphviz-dev \
+        asciidoc \
+        rsync \
+        && rm -rf /var/lib/apt/lists/*
+
+    # 安装 ARGoS3
+    cd /opt/container_env
+    git clone https://github.com/ilpincy/argos3.git
+    cd argos3/src/plugins/robots
+    rm -rf foot-bot
+    git clone https://github.com/Tianfu-swarm/foot-bot.git
+    cd ../../../
+    mkdir build_simulator
+    cd build_simulator
+    cmake ../src
+    make -j$(nproc)
+    make doc
+    make install
+
+
+    mkdir -p /opt/container_env/fission_fusion_controller_ws/src/
+
+    # 安装 fission_fusion 控制器
+    cd /opt/container_env/fission_fusion_controller_ws/src
+    git clone https://github.com/Tianfu-swarm/fission_fusion_controller.git
+    git clone https://github.com/Tianfu-swarm/argos3_ros_bridge.git
+    cd ..
+    source /opt/ros/humble/setup.bash
+    colcon build 
+
+%runscript
+    . /opt/ros/humble/setup.bash
+    . /opt/container_env/fission_fusion_controller_ws/install/setup.bash
+    exec "$@"

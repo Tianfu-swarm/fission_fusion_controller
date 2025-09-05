@@ -36,7 +36,7 @@ export ROS_DOMAIN_ID=$domain_id
 echo "ROS_DOMAIN_ID set to: $ROS_DOMAIN_ID"
 
 timestamp_result=$(date +"%Y%m%d%H%M")
-results_path="../data/result_${timestamp_result}"
+results_path="../../data/result_${timestamp_result}"
 
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
