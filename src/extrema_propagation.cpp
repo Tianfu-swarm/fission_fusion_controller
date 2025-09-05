@@ -2,12 +2,55 @@
 
 double fissionFusion::exponential_random()
 {
-    // 使用 thread_local 保证线程安全（C++11）
-    static thread_local std::random_device rd;                     // 随机种子
-    static thread_local std::mt19937 gen(rd());                    // Mersenne Twister 引擎
-    static thread_local std::exponential_distribution<> dist(1.0); // λ=1 的指数分布
+    // 1) 从 current_namespace 提取 self_id（如 /bot8）
+    static const std::regex kBotIdRe(R"((?:^|/)bot(\d+)(?:/|$))");
+    int self_id = -1;
+    {
+        std::smatch m;
+        if (std::regex_search(current_namespace, m, kBotIdRe))
+        {
+            try
+            {
+                self_id = std::stoi(m[1].str());
+            }
+            catch (...)
+            {
+                self_id = -1;
+            }
+        }
+    }
 
-    return dist(gen); // 直接生成指数分布随机数
+    // 2) 为“当前对象 this”取得/创建专属 RNG（只播种一次）
+    using clock = std::chrono::high_resolution_clock;
+    static std::mutex map_mtx;
+    static std::unordered_map<const fissionFusion *, std::mt19937> gens;
+
+    std::mt19937 *gen_ptr = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(map_mtx);
+        auto it = gens.find(this);
+        if (it == gens.end())
+        {
+            const uint64_t rt_ns = static_cast<uint64_t>(clock::now().time_since_epoch().count());
+            const uint64_t pid = static_cast<uint64_t>(::getpid());
+            const uint64_t ns_h = static_cast<uint64_t>(std::hash<std::string>{}(current_namespace));
+            const uint64_t id64 = (self_id >= 0) ? static_cast<uint64_t>(self_id) : 0ULL;
+
+            std::seed_seq seed{
+                static_cast<uint32_t>(rt_ns),
+                static_cast<uint32_t>(rt_ns >> 32),
+                static_cast<uint32_t>(id64),
+                static_cast<uint32_t>(pid),
+                static_cast<uint32_t>(ns_h),
+                static_cast<uint32_t>(ns_h >> 32)};
+            it = gens.emplace(this, std::mt19937(seed)).first; // ← 首次调用时播种
+        }
+        gen_ptr = &it->second;
+    }
+
+    // 3) 取样（指数分布 λ=1）
+    static thread_local std::exponential_distribution<double> dist(1.0);
+    return dist(*gen_ptr);
 }
 
 // Initialize the local random vector x with K values drawn from Exp(1)
@@ -123,15 +166,6 @@ void fissionFusion::broadcast_vector()
     }
 
     radio_actuator_publisher_->publish(broadcast_vector);
-
-    // std::cout << "[" << this->get_clock()->now().seconds() << "]" << " Send vector: [";
-    // for (size_t i = 0; i < broadcast_vector.data.size(); ++i)
-    // {
-    //     std::cout << broadcast_vector.data[i];
-    //     if (i != broadcast_vector.data.size() - 1)
-    //         std::cout << ", ";
-    // }
-    // std::cout << "]" << std::endl;
 }
 
 // Main function to run one round of extrema propagation
@@ -145,15 +179,6 @@ double fissionFusion::extrema_propagation()
         propagation_hops = 0;
         N_history.clear();
         has_started_convergence = false;
-
-        // std::cout << "[" << this->get_clock()->now().seconds() << "]" << " Init a new vector, round_id=" << current_round_id << ", vector: [";
-        // for (size_t i = 0; i < x.size(); ++i)
-        // {
-        //     std::cout << x[i];
-        //     if (i != x.size() - 1)
-        //         std::cout << ", ";
-        // }
-        // std::cout << "]" << std::endl;
     }
 
     broadcast_vector();
@@ -198,7 +223,6 @@ double fissionFusion::extrema_propagation()
         propagation_hops = 0;
         N_history.clear();
 
-        x.clear();
         return N;
     }
 

@@ -11,14 +11,14 @@ cleanup() {
     pkill -f argos3 # Kill ARGoS3 process
     pkill -f ros2   # Kill all ROS 2 processes
     pkill -f rviz2  # Kill RViz process
-    pkill -f fission_fusion
+    pkill -f fission_fusion_controller
     exit 0
 }
 
 # Trap SIGINT (Ctrl+C) and call cleanup function
 trap cleanup SIGINT
 
-source ~/fission_fusion_ws/install/setup.bash
+source ~/fission_fusion_controller_ws/install/setup.bash
 # Export necessary environment variables
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/argos3:../../../install/argos3_ros_bridge/lib
 export ARGOS_PLUGIN_PATH=../../../install/argos3_ros_bridge/lib
@@ -35,22 +35,23 @@ export ROS_DOMAIN_ID=$domain_id
 echo "ROS_DOMAIN_ID set to: $ROS_DOMAIN_ID"
 
 timestamp_result=$(date +"%Y%m%d%H%M")
-results_path="../data/result_${date_str}${timestamp_result}"
+results_path="../data/result_${timestamp_result}"
+
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
-ros2 launch fission_fusion run.launch.py numbers:=11.0 \
-                                         desired_subgroup_size:=6.0 \
-                                         follow_range:=3.0 \
-                                         subgroup_size_sigma:=0.0 \
-                                         groupsize_tolerance:=5.0 \
-                                         K:=1000 \
-                                         early_converge_window:=10 \
-                                         isModelworks:=false \
-                                         isMinCommunication:=true \
-                                         isConCommunication:=true \
-                                         use_rviz:=true \
-                                         use_sim_time:=true \
-                                         results_file_path:=${results_path}&
+ros2 launch fission_fusion_controller run.launch.py numbers:=21.0 \
+                                                    desired_subgroup_size:=4.0 \
+                                                    follow_range:=3.0 \
+                                                    subgroup_size_sigma:=0.0 \
+                                                    groupsize_tolerance:=0.0 \
+                                                    K:=1000 \
+                                                    early_converge_window:=10 \
+                                                    isModelworks:=false \
+                                                    isMinCommunication:=false \
+                                                    isConCommunication:=false \
+                                                    use_rviz:=true \
+                                                    use_sim_time:=true \
+                                                    results_file_path:=${results_path}&
 ROS2_PID=$! # Save the process ID (PID) of ros2 launch
 
 # Wait for ROS 2 nodes to initialize

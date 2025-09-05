@@ -4,7 +4,14 @@ from launch.actions import SetEnvironmentVariable, DeclareLaunchArgument, Opaque
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch.conditions import IfCondition
+from ament_index_python.packages import get_package_share_directory
 
+rviz_config_file = os.path.join(
+    get_package_share_directory('fission_fusion_controller'),
+    'launch',
+    'rviz',
+    'default.rviz'
+)
 
 def generate_nodes(context, *args, **kwargs):
     number_of_robots = int(float(LaunchConfiguration('numbers').perform(context)))
@@ -13,8 +20,8 @@ def generate_nodes(context, *args, **kwargs):
     for i in range(number_of_robots):
         nodes.append(
             Node(
-                package='fission_fusion',
-                executable='fission_fusion',
+                package='fission_fusion_controller',
+                executable='fission_fusion_controller',
                 name='fission_fusion_controller',
                 namespace=f'bot{i}',
                 output='screen',
@@ -66,7 +73,7 @@ def generate_launch_description():
         executable='rviz2',
         name='rviz',
         output='screen',
-        arguments=['-d', "/rviz/defaul.rviz"],
+        arguments=['-d', rviz_config_file],
         condition=IfCondition(LaunchConfiguration('use_rviz')),
         parameters=[{"use_sim_time": LaunchConfiguration('use_sim_time')}]
     )

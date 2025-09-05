@@ -146,7 +146,7 @@ void fissionFusion::publish_transformed_follow_relation()
 
 void fissionFusion::visualization()
 {
-    // fissionFusion::publish_path();
+    fissionFusion::publish_path();
 
     // fissionFusion::publish_predict_path();
 

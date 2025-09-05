@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <package format="3">
-  <name>fission_fusion</name>
+  <name>fission_fusion_controller</name>
   <version>0.1.0</version>
   <description>A ROS 2 package for fission_fusion.</description>
   <maintainer email="tianfu.zhang@uni-konstanz.de">Tianfu</maintainer>

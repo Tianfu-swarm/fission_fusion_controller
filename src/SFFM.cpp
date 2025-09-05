@@ -18,45 +18,6 @@ void fissionFusion::sffm_controler_step()
         bot_id = std::stoi(match[1]);
     }
 
-    // if (bot_id != -1)
-    // {
-    //     if (bot_id < 11)
-    //     {
-    //         desired_subgroup_size = 13;
-    //         groupsize_tolerance = 0;
-    //     }
-    //     else if (bot_id < 13)
-    //     {
-    //         desired_subgroup_size = 12;
-    //         groupsize_tolerance = 0;
-    //     }
-    //     else if (bot_id < 15)
-    //     {
-    //         desired_subgroup_size = 11;
-    //         groupsize_tolerance = 0;
-    //     }
-    //     else if (bot_id < 16)
-    //     {
-    //         desired_subgroup_size = 10;
-    //         groupsize_tolerance = 0;
-    //     }
-    //     else if (bot_id < 17)
-    //     {
-    //         desired_subgroup_size = 4;
-    //         groupsize_tolerance = 0;
-    //     }
-    //     else if (bot_id < 21)
-    //     {
-    //         desired_subgroup_size = 3;
-    //         groupsize_tolerance = 0;
-    //     }
-    //     else if (bot_id < 22)
-    //     {
-    //         desired_subgroup_size = 1;
-    //         groupsize_tolerance = 0;
-    //     }
-    // }
-
     // pub rab
     Pub_rab();
 
@@ -154,6 +115,7 @@ void fissionFusion::execute_state_behavior(robot_state state)
         geometry_msgs::msg::Twist twist_msg;
 
         geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning();
+
         if (local_planning_target.child_frame_id == "avoid_target")
         {
             std::pair<double, double> results = pd_control_to_target(local_planning_target);
@@ -219,85 +181,36 @@ void fissionFusion::execute_state_behavior(robot_state state)
     }
 
     case FISSION:
-    {
-
-        // fission
+    { // random_walk
         target_transform.header.frame_id.clear();
 
+        auto [v, omega] = random_walk(
+            /*mean_v=*/1.0, /*std_v=*/0.5,
+            /*mean_ω=*/0.0, /*std_ω=*/0.5);
         geometry_msgs::msg::Twist twist_msg;
-        geometry_msgs::msg::TransformStamped GroupGLJTarget = computeGroupGLJTarget(); // group glj is for keep far with a group
-        geometry_msgs::msg::TransformStamped GLJTarget = computeGLJTarget();           // when stay is to gather group,when fission is to gather all fissioner
 
-        double weight_fission = 0.3; // 权重1（fission 目标）
-        double weight_group = 0.7;   // 权重2（group 目标）
+        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning();
 
-        double weight_sum = weight_fission + weight_group;
-        if (weight_sum > 1e-6)
-        { // 防止除以0
-            weight_fission /= weight_sum;
-            weight_group /= weight_sum;
-        }
-
-        // 加权合并方向
-        double combined_x = weight_group * GLJTarget.transform.translation.x + weight_fission * GroupGLJTarget.transform.translation.x;
-        double combined_y = weight_group * GLJTarget.transform.translation.y + weight_fission * GroupGLJTarget.transform.translation.y;
-
-        // 构造目标 TransformStamped
-        geometry_msgs::msg::TransformStamped combined_target;
-        combined_target.header.stamp = rclcpp::Clock().now();
-        combined_target.header.frame_id = "base_link";
-        combined_target.transform.translation.x = combined_x;
-        combined_target.transform.translation.y = combined_y;
-        combined_target.transform.translation.z = 0.0;
-
-        combined_target.transform.rotation.x = 0.0;
-        combined_target.transform.rotation.y = 0.0;
-        combined_target.transform.rotation.z = 0.0;
-        combined_target.transform.rotation.w = 1.0;
-
-        if (fission_sign == 1 && original_group_child_frame_id_list.size() > 1) // 存在原始的group，存在同类的fissioner
+        if (local_planning_target.child_frame_id == "avoid_target")
         {
-            // std::cout << "combined_target is " << combined_target.transform.translation.x << ", " << combined_target.transform.translation.y << std::endl;
-            // std::cout << "GLJTarget       is " << GLJTarget.transform.translation.x << ", " << GLJTarget.transform.translation.y << std::endl;
-            // std::cout << "GroupGLJTarget  is " << GroupGLJTarget.transform.translation.x << ", " << GroupGLJTarget.transform.translation.y << std::endl;
-
-            std::pair<double, double> control_command = pd_control_to_target(combined_target);
-
-            twist_msg.linear.x = control_command.first;
+            std::pair<double, double> results = pd_control_to_target(local_planning_target);
+            twist_msg.linear.x = results.first;
             twist_msg.linear.y = 0.0;
             twist_msg.linear.z = 0.0;
 
             twist_msg.angular.x = 0.0;
             twist_msg.angular.y = 0.0;
-            twist_msg.angular.z = control_command.second;
+            twist_msg.angular.z = results.second;
         }
         else
         {
-            geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning();
-            if (local_planning_target.child_frame_id == "avoid_target")
-            {
-                std::pair<double, double> results = pd_control_to_target(local_planning_target);
-                twist_msg.linear.x = results.first;
-                twist_msg.linear.y = 0.0;
-                twist_msg.linear.z = 0.0;
+            twist_msg.linear.x = v;
+            twist_msg.linear.y = 0.0;
+            twist_msg.linear.z = 0.0;
 
-                twist_msg.angular.x = 0.0;
-                twist_msg.angular.y = 0.0;
-                twist_msg.angular.z = results.second;
-            }
-            else
-            {
-                auto [v, omega] = random_walk(
-                    /*mean_v=*/1.0, /*std_v=*/0.5,
-                    /*mean_ω=*/0.0, /*std_ω=*/0.5);
-                twist_msg.linear.x = v;
-                twist_msg.linear.y = 0.0;
-                twist_msg.linear.z = 0.0;
-
-                twist_msg.angular.x = 0.0;
-                twist_msg.angular.y = 0.0;
-                twist_msg.angular.z = omega;
-            }
+            twist_msg.angular.x = 0.0;
+            twist_msg.angular.y = 0.0;
+            twist_msg.angular.z = omega;
         }
 
         if (isAbstacle == false)
@@ -305,14 +218,157 @@ void fissionFusion::execute_state_behavior(robot_state state)
             cmd_vel_publisher_->publish(twist_msg);
         }
         break;
+
+        // // fission
+        // target_transform.header.frame_id.clear();
+
+        // geometry_msgs::msg::Twist twist_msg;
+        // geometry_msgs::msg::TransformStamped GroupGLJTarget = computeGroupGLJTarget(); // group glj is for keep far with a group
+        // geometry_msgs::msg::TransformStamped GLJTarget = computeGLJTarget();           // when stay is to gather group,when fission is to gather all fissioner
+
+        // double weight_fission = 0.3; // 权重1（fission 目标）
+        // double weight_group = 0.7;   // 权重2（group 目标）
+
+        // double weight_sum = weight_fission + weight_group;
+        // if (weight_sum > 1e-6)
+        // { // 防止除以0
+        //     weight_fission /= weight_sum;
+        //     weight_group /= weight_sum;
+        // }
+
+        // // 加权合并方向
+        // double combined_x = weight_group * GLJTarget.transform.translation.x + weight_fission * GroupGLJTarget.transform.translation.x;
+        // double combined_y = weight_group * GLJTarget.transform.translation.y + weight_fission * GroupGLJTarget.transform.translation.y;
+
+        // // 构造目标 TransformStamped
+        // geometry_msgs::msg::TransformStamped combined_target;
+        // combined_target.header.stamp = rclcpp::Clock().now();
+        // combined_target.header.frame_id = "base_link";
+        // combined_target.transform.translation.x = combined_x;
+        // combined_target.transform.translation.y = combined_y;
+        // combined_target.transform.translation.z = 0.0;
+
+        // combined_target.transform.rotation.x = 0.0;
+        // combined_target.transform.rotation.y = 0.0;
+        // combined_target.transform.rotation.z = 0.0;
+        // combined_target.transform.rotation.w = 1.0;
+
+        // if (fission_sign == 1 && original_group_child_frame_id_list.size() > 1) // 存在原始的group，存在同类的fissioner
+        // {
+        //     // std::cout << "combined_target is " << combined_target.transform.translation.x << ", " << combined_target.transform.translation.y << std::endl;
+        //     // std::cout << "GLJTarget       is " << GLJTarget.transform.translation.x << ", " << GLJTarget.transform.translation.y << std::endl;
+        //     // std::cout << "GroupGLJTarget  is " << GroupGLJTarget.transform.translation.x << ", " << GroupGLJTarget.transform.translation.y << std::endl;
+
+        //     std::pair<double, double> control_command = pd_control_to_target(combined_target);
+
+        //     twist_msg.linear.x = control_command.first;
+        //     twist_msg.linear.y = 0.0;
+        //     twist_msg.linear.z = 0.0;
+
+        //     twist_msg.angular.x = 0.0;
+        //     twist_msg.angular.y = 0.0;
+        //     twist_msg.angular.z = control_command.second;
+        // }
+        // else
+        // {
+        //     geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning();
+        //     if (local_planning_target.child_frame_id == "avoid_target")
+        //     {
+        //         std::pair<double, double> results = pd_control_to_target(local_planning_target);
+        //         twist_msg.linear.x = results.first;
+        //         twist_msg.linear.y = 0.0;
+        //         twist_msg.linear.z = 0.0;
+
+        //         twist_msg.angular.x = 0.0;
+        //         twist_msg.angular.y = 0.0;
+        //         twist_msg.angular.z = results.second;
+        //     }
+        //     else
+        //     {
+        //         auto [v, omega] = random_walk(
+        //             /*mean_v=*/1.0, /*std_v=*/0.5,
+        //             /*mean_ω=*/0.0, /*std_ω=*/0.5);
+        //         twist_msg.linear.x = v;
+        //         twist_msg.linear.y = 0.0;
+        //         twist_msg.linear.z = 0.0;
+
+        //         twist_msg.angular.x = 0.0;
+        //         twist_msg.angular.y = 0.0;
+        //         twist_msg.angular.z = omega;
+        //     }
+        // }
+
+        // if (isAbstacle == false)
+        // {
+        //     cmd_vel_publisher_->publish(twist_msg);
+        // }
+        // break;
     }
 
     case STAY:
     {
-        geometry_msgs::msg::TransformStamped GLJTarget = computeGLJTarget();
         target_transform.header.frame_id.clear();
 
-        std::pair<double, double> control_command = pd_control_to_target(GLJTarget);
+        std::pair<double, double> control_command;
+
+        if (std::find(base_ground_data.data.begin(), base_ground_data.data.end(), 0.0) == base_ground_data.data.end())
+        {
+            // 全白
+            geometry_msgs::msg::TransformStamped LookBlackTarget = look_for_black();
+            control_command = pd_control_to_target(LookBlackTarget);
+
+            std::cout << "look for black" << std::endl;
+            std::cout << "LookBlackTarget.x = " << LookBlackTarget.transform.translation.x
+                      << " LookBlackTarget.y = " << LookBlackTarget.transform.translation.y
+                      << std::endl;
+
+            std::cout << "control_command.x = " << control_command.first
+                      << " control_command.y = " << control_command.second
+                      << std::endl;
+        }
+        else
+        {
+
+            geometry_msgs::msg::TransformStamped GLJTarget = computeGLJTarget();
+            geometry_msgs::msg::TransformStamped BlackTarget = stay_on_black();
+
+            double w_glj = 0.0;
+            double w_black = 0.3;
+
+            geometry_msgs::msg::TransformStamped CombinedTarget;
+            CombinedTarget.header.stamp = rclcpp::Clock().now();
+            CombinedTarget.header.frame_id = "base_link";
+            CombinedTarget.child_frame_id = "combined_target";
+
+            // 平移加权
+            double gx = GLJTarget.transform.translation.x;
+            double gy = GLJTarget.transform.translation.y;
+            double bx = BlackTarget.transform.translation.x;
+            double by = BlackTarget.transform.translation.y;
+
+            double tx = w_glj * gx + w_black * bx;
+            double ty = w_glj * gy + w_black * by;
+
+            CombinedTarget.transform.translation.x = tx;
+            CombinedTarget.transform.translation.y = ty;
+            CombinedTarget.transform.translation.z = 0.0;
+
+            // 旋转直接设为单位四元数（默认朝向）
+            CombinedTarget.transform.rotation.x = 0.0;
+            CombinedTarget.transform.rotation.y = 0.0;
+            CombinedTarget.transform.rotation.z = 0.0;
+            CombinedTarget.transform.rotation.w = 1.0;
+
+            control_command = pd_control_to_target(CombinedTarget);
+
+            // std::cout << "stay on more black" << std::endl;
+            // std::cout << "CombinedTarget.x = " << CombinedTarget.transform.translation.x
+            //           << " CombinedTarget.y = " << CombinedTarget.transform.translation.y
+            //           << std::endl;
+            // std::cout << "CombinedTarget_command.x = " << control_command.first
+            //           << " CombinedTarget_command.y = " << control_command.second
+            //           << std::endl;
+        }
 
         geometry_msgs::msg::Twist twist_msg;
         twist_msg.linear.x = control_command.first;
@@ -346,33 +402,21 @@ fissionFusion::robot_state fissionFusion::update_state(robot_state current_robot
         std::pair<double, double> follow_result = sffm_estimate_posibility_range(desired_subgroup_size,
                                                                                  arena_area,
                                                                                  n_groupsize);
-        static bool INIT_PHASE = true;
-        double follow_posibility;
-        double follow_radius;
-        // 判断是否在初始化阶段
-        if (INIT_PHASE)
+        if (std::find(base_ground_data.data.begin(),
+                      base_ground_data.data.end(),
+                      0.0) != base_ground_data.data.end())
         {
-            follow_posibility = (1 - (1 / desired_subgroup_size));
-            follow_radius = follow_range;
-            std::cout << "INIT_PHASE, follow posibility is " << follow_posibility << std::endl;
 
-            INIT_PHASE = false;
-        }
-        else
-        {
-            follow_posibility = 1.0; // (1 - (1 / desired_subgroup_size)); // 1.0; // 只有初始时或fission时才使用估计的概率
-            follow_radius = follow_range;
+            std::cout << "arrived black, return stay" << std::endl;
+
+            initial_group_size = 1;
+            stay_start_time = this->get_clock()->now();
+            wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
+            return STAY; // 到达black
         }
 
-        // if (isModelworks == true)
-        // {
-        //     if (firstTimefusion == true)
-        //     {
-        //         follow_posibility = 1.0;
-        //         follow_range = 15;
-        //         firstTimefusion = false;
-        //     }
-        // }
+        double follow_posibility = 1;
+        double follow_radius = follow_range;
 
         sffm_choose_follow_target(follow_posibility, follow_radius);
 
@@ -522,124 +566,178 @@ fissionFusion::robot_state fissionFusion::update_state(robot_state current_robot
     {
         stabilization_timer_started = false;
         initial_decision = UNDECIDED;
-        // fission前，首先选择要发fission的group是哪个
-        if (original_group_child_frame_id_list.empty())
+
+        if (fission_transform.child_frame_id.empty())
         {
-            std::regex pattern(R"(bot([0-9]+)/base_link)");
+            double min_distance = 1e6;
             for (const auto &tf : rab_tf.transforms)
             {
                 double x = tf.transform.translation.x;
                 double y = tf.transform.translation.y;
                 double distance = std::sqrt(x * x + y * y);
-
-                if (distance > follow_range)
+                if (distance < min_distance)
                 {
-                    continue;
-                }
-
-                if (tf.header.frame_id == tf.child_frame_id)
-                {
-                    continue;
-                }
-
-                const std::string &frame_id = tf.child_frame_id;
-                std::smatch match;
-
-                if (std::regex_match(frame_id, match, pattern))
-                {
-                    int id = std::stoi(match[1]);
-                    double id_fission_sign;
-                    auto target_data = Extract_Rab_Data(id);
-                    if (target_data.size() < frame_length)
-                    {
-                        continue; // 不足4个数据，无法判断
-                    }
-
-                    id_fission_sign = target_data[3];
-
-                    if (id_fission_sign == 1.0)
-                    {
-                        continue;
-                    }
-
-                    if (std::find(original_group_child_frame_id_list.begin(), original_group_child_frame_id_list.end(), id) == original_group_child_frame_id_list.end())
-                    {
-                        original_group_child_frame_id_list.push_back(id);
-                    }
+                    min_distance = distance;
+                    fission_transform.child_frame_id = tf.child_frame_id;
                 }
             }
         }
-
-        // 检查之后list还是0则返回RANDOM_WALK
-        if (original_group_child_frame_id_list.size() == 0)
+        else
         {
-            rclcpp::Time now = this->get_clock()->now();
-            // std::cout << "WAIT FISSION -> RANDOM_WALK [No Original Group] [" << now.seconds() << "], jitter time is " << jitter_time << std::endl;
-            if (now - fission_start_time >= rclcpp::Duration::from_seconds(jitter_time))
-            {
-                std::cout << "FISSION -> RANDOM_WALK [No Original Group] [" << now.seconds() << "]" << std::endl;
-                return RANDOM_WALK;
-            }
-
-            // 还没到超时，继续留在 FISSION 重试
-            return FISSION;
-        }
-
-        double sum_x = 0.0, sum_y = 0.0;
-        int count = 0;
-
-        for (const auto &target_id : original_group_child_frame_id_list)
-        {
-            std::string child_frame_id = "bot" + std::to_string(target_id) + "/base_link";
             bool found = false;
 
-            for (const auto &tf : rab_tf.transforms)
+            if (!rab_tf.transforms.empty())
             {
-
-                if (tf.child_frame_id == child_frame_id)
+                for (const auto &tf : rab_tf.transforms)
                 {
-                    sum_x += tf.transform.translation.x;
-                    sum_y += tf.transform.translation.y;
-                    count++;
-                    found = true;
-                    break;
+                    if (tf.child_frame_id == fission_transform.child_frame_id)
+                    {
+                        fission_transform = tf;
+                        found = true;
+                        rab_tf.transforms.clear();
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    fission_transform.header.frame_id.clear();
+                    return RANDOM_WALK;
                 }
             }
 
-            if (!found)
+            double x = fission_transform.transform.translation.x;
+            double y = fission_transform.transform.translation.y;
+            double distance = std::sqrt(x * x + y * y);
+            std::cout << "distance to fission target " << fission_transform.child_frame_id
+                      << " is " << distance << std::endl;
+            if (distance > 1.2 * follow_range)
             {
-                std::cout << "[Warning] TF not found for " << child_frame_id << ", skipping." << std::endl;
-                return FISSION;
+                fission_transform.child_frame_id.clear();
+                return RANDOM_WALK;
             }
         }
-
-        double center_dist = 0;
-        if (count > 0)
-        {
-            double center_x = sum_x / count;
-            double center_y = sum_y / count;
-            center_dist = std::sqrt(center_x * center_x + center_y * center_y);
-        }
-
-        double distance_threshold = 1.5 * follow_range;
-        if (center_dist > distance_threshold)
-        {
-            stay_start_time = this->get_clock()->now();
-            std::cout << "FISSION to STAY.[" << stay_start_time.seconds() << "]" << std::endl;
-            return STAY;
-        }
-
-        double fission_timeout_threshold = 2 * distance_threshold;
-
-        if (this->get_clock()->now() - fission_start_time > rclcpp::Duration::from_seconds(fission_timeout_threshold))
-        {
-            std::cout << "FISSION timeout, switching to RANDOM_WALK." << std::endl;
-            return RANDOM_WALK;
-        }
-
-        // std::cout << "distance to original group center is " << center_dist << " threshold distance is " << distance_threshold << std::endl;
-
         return FISSION;
+        // // fission前，首先选择要发fission的group是哪个
+        // if (original_group_child_frame_id_list.empty())
+        // {
+        //     std::regex pattern(R"(bot([0-9]+)/base_link)");
+        //     for (const auto &tf : rab_tf.transforms)
+        //     {
+        //         double x = tf.transform.translation.x;
+        //         double y = tf.transform.translation.y;
+        //         double distance = std::sqrt(x * x + y * y);
+
+        //         if (distance > follow_range / 2)
+        //         {
+        //             continue;
+        //         }
+
+        //         if (tf.header.frame_id == tf.child_frame_id)
+        //         {
+        //             continue;
+        //         }
+
+        //         const std::string &frame_id = tf.child_frame_id;
+        //         std::smatch match;
+
+        //         if (std::regex_match(frame_id, match, pattern))
+        //         {
+        //             int id = std::stoi(match[1]);
+        //             double id_fission_sign;
+        //             auto target_data = Extract_Rab_Data(id);
+        //             if (target_data.size() < frame_length)
+        //             {
+        //                 continue; // 不足4个数据，无法判断
+        //             }
+
+        //             id_fission_sign = target_data[3];
+
+        //             if (id_fission_sign == 1.0)
+        //             {
+        //                 continue;
+        //             }
+
+        //             if (std::find(original_group_child_frame_id_list.begin(), original_group_child_frame_id_list.end(), id) == original_group_child_frame_id_list.end())
+        //             {
+        //                 original_group_child_frame_id_list.push_back(id);
+        //             }
+        //         }
+        //     }
+        // }
+
+        // // 检查之后list还是0则返回RANDOM_WALK
+        // if (original_group_child_frame_id_list.size() == 0)
+        // {
+        //     rclcpp::Time now = this->get_clock()->now();
+        //     // std::cout << "WAIT FISSION -> RANDOM_WALK [No Original Group] [" << now.seconds() << "], jitter time is " << jitter_time << std::endl;
+        //     if (now - fission_start_time >= rclcpp::Duration::from_seconds(jitter_time))
+        //     {
+        //         std::cout << "FISSION -> RANDOM_WALK [No Original Group] [" << now.seconds() << "]" << std::endl;
+        //         return RANDOM_WALK;
+        //     }
+
+        //     // 还没到超时，继续留在 FISSION 重试
+        //     return FISSION;
+        // }
+
+        // double sum_x = 0.0, sum_y = 0.0;
+        // int count = 0;
+
+        // for (const auto &target_id : original_group_child_frame_id_list)
+        // {
+        //     std::string child_frame_id = "bot" + std::to_string(target_id) + "/base_link";
+        //     bool found = false;
+
+        //     for (const auto &tf : rab_tf.transforms)
+        //     {
+
+        //         if (tf.child_frame_id == child_frame_id)
+        //         {
+        //             sum_x += tf.transform.translation.x;
+        //             sum_y += tf.transform.translation.y;
+        //             count++;
+        //             found = true;
+        //             break;
+        //         }
+        //     }
+
+        //     if (!found)
+        //     {
+        //         std::cout << "[Warning] TF not found for " << child_frame_id << ", skipping." << std::endl;
+        //         return FISSION;
+        //     }
+        // }
+
+        // double center_dist = 0;
+        // if (count > 0)
+        // {
+        //     double center_x = sum_x / count;
+        //     double center_y = sum_y / count;
+        //     center_dist = std::sqrt(center_x * center_x + center_y * center_y);
+        // }
+
+        // double distance_threshold = 1.1 * follow_range;
+        // if (center_dist > distance_threshold)
+        // {
+        //     initial_group_size = 1;
+        //     stay_start_time = this->get_clock()->now();
+        //     wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
+        //     std::cout << "FISSION to STAY.[" << stay_start_time.seconds() << "]" << std::endl;
+        //     return STAY;
+        // }
+
+        // double fission_timeout_threshold = 2 * distance_threshold;
+
+        // if (this->get_clock()->now() - fission_start_time > rclcpp::Duration::from_seconds(fission_timeout_threshold))
+        // {
+        //     std::cout << "FISSION timeout, switching to RANDOM_WALK." << std::endl;
+        //     return RANDOM_WALK;
+        // }
+
+        // // std::cout << "distance to original group center is " << center_dist << " threshold distance is " << distance_threshold << std::endl;
+
+        // return FISSION;
     }
 
     case STAY:
@@ -647,152 +745,185 @@ fissionFusion::robot_state fissionFusion::update_state(robot_state current_robot
 
         double actual_group_size = std::round(estimated_group_size);
 
-        // —— 已作出决策：统一延迟窗口，等待 1s 再返回决策（防止抖动干扰） ——
-        if (initial_decision != UNDECIDED)
+        if (groupsize_tolerance > 0)
         {
-            auto now = this->get_clock()->now();
-            double wait_seconds = (initial_decision == STAY) ? 1.5 : 1.0; // STAY 等 1.5 秒，FISSION 等 1 秒
-
-            if (now - decision_start_time >= rclcpp::Duration::from_seconds(wait_seconds))
+            // —— 已作出决策：统一延迟窗口，等待 1s 再返回决策（防止抖动干扰） ——
+            if (initial_decision != UNDECIDED)
             {
-                robot_state decision = initial_decision;
-                initial_decision = UNDECIDED;
+                auto now = this->get_clock()->now();
+                double wait_seconds = (initial_decision == STAY) ? 1.5 : 1.0; // STAY 等 1.5 秒，FISSION 等 1 秒
 
-                if (decision == STAY)
+                if (now - decision_start_time >= rclcpp::Duration::from_seconds(wait_seconds))
                 {
-                    std::cout << "time now " << now.seconds() << " decision time is " << decision_start_time.seconds() << " return STAY" << std::endl;
+                    robot_state decision = initial_decision;
+                    initial_decision = UNDECIDED;
+
+                    if (decision == STAY)
+                    {
+                        std::cout << "time now " << now.seconds() << " decision time is " << decision_start_time.seconds() << " return STAY" << std::endl;
+                    }
+                    if (decision == FISSION)
+                    {
+                        fission_start_time = now; // 用 now 保证时间一致
+                        std::cout << "time now " << now.seconds() << " decision time is " << decision_start_time.seconds() << " return FISSION" << std::endl;
+                    }
+                    return decision; // 返回决策
                 }
-                if (decision == FISSION)
-                {
-                    fission_start_time = now; // 用 now 保证时间一致
-                    std::cout << "time now " << now.seconds() << " decision time is " << decision_start_time.seconds() << " return FISSION" << std::endl;
-                }
-                return decision; // 返回决策
-            }
 
-            target_transform.child_frame_id.clear();
-            return STAY; // 等待期间保持 STAY
-        }
-
-        // —— 未决策 && 超阈值：进入稳定期 ——
-        if (actual_group_size >= (desired_subgroup_size + groupsize_tolerance))
-        {
-            if (!stabilization_timer_started)
-            {
-                double duration_seconds = 0.5 * actual_group_size;
-                stabilization_duration = rclcpp::Duration::from_seconds(duration_seconds);
-                stabilization_start_time = this->get_clock()->now();
-                stabilization_timer_started = true;
-                std::cout << "enter stabilization duration, time is " << stabilization_start_time.seconds()
-                          << ", current group size is " << actual_group_size
-                          << " desired group size is " << desired_subgroup_size
-                          << " groupsize_tolerance is " << groupsize_tolerance
-                          << std::endl;
-            }
-
-            rclcpp::Time current_time = this->get_clock()->now();
-            if ((current_time - stabilization_start_time) < stabilization_duration)
-            {
-                // 稳定期未结束，保持 STAY 状态
                 target_transform.child_frame_id.clear();
-                return STAY;
+                return STAY; // 等待期间保持 STAY
             }
 
-            // 稳定期结束后，进行正常判断逻辑
-            std::pair<double, double> follow_result = sffm_estimate_posibility_range(desired_subgroup_size,
-                                                                                     arena_area,
-                                                                                     actual_group_size);
-
-            double follow_posibility = 1 - ((actual_group_size - desired_subgroup_size) / actual_group_size);
-            double follow_radius = 2;
-
-            if (initial_decision == UNDECIDED) // 没有状态时才定义
+            // —— 未决策 && 超阈值：进入稳定期 ——
+            if (actual_group_size >= (desired_subgroup_size + groupsize_tolerance))
             {
-                sffm_choose_follow_target(follow_posibility, follow_radius);
-                if (target_transform.header.frame_id == "non-follower")
+                if (!stabilization_timer_started)
                 {
-                    original_group_child_frame_id_list.clear();
-                    initial_decision = FISSION;
-                    decision_start_time = this->get_clock()->now();
-                    std::cout << "[DECISION] First decision: FISSION Time is " << decision_start_time.seconds() << std::endl;
-                    return STAY; // 下一帧进入“已决策延迟窗口”
+                    double duration_seconds = 0.5 * actual_group_size;
+                    stabilization_duration = rclcpp::Duration::from_seconds(duration_seconds);
+                    stabilization_start_time = this->get_clock()->now();
+                    stabilization_timer_started = true;
+                    std::cout << "enter stabilization duration, time is " << stabilization_start_time.seconds()
+                              << ", current group size is " << actual_group_size
+                              << " desired group size is " << desired_subgroup_size
+                              << " groupsize_tolerance is " << groupsize_tolerance
+                              << std::endl;
                 }
-                else
+
+                rclcpp::Time current_time = this->get_clock()->now();
+                if ((current_time - stabilization_start_time) < stabilization_duration)
                 {
-                    Maintain_state_start_time = this->get_clock()->now();
+                    // 稳定期未结束，保持 STAY 状态
                     target_transform.child_frame_id.clear();
-                    initial_decision = STAY;
-                    decision_start_time = this->get_clock()->now();
-                    std::cout << "[DECISION] First decision: STAY Time is " << decision_start_time.seconds() << std::endl;
                     return STAY;
                 }
+
+                // 稳定期结束后，进行正常判断逻辑
+                std::pair<double, double> follow_result = sffm_estimate_posibility_range(desired_subgroup_size,
+                                                                                         arena_area,
+                                                                                         actual_group_size);
+
+                double follow_posibility = 1 - ((actual_group_size - desired_subgroup_size) / actual_group_size);
+                double follow_radius = 2;
+
+                if (initial_decision == UNDECIDED) // 没有状态时才定义
+                {
+                    sffm_choose_follow_target(follow_posibility, follow_radius);
+                    if (target_transform.header.frame_id == "non-follower")
+                    {
+                        original_group_child_frame_id_list.clear();
+                        initial_decision = FISSION;
+                        decision_start_time = this->get_clock()->now();
+                        std::cout << "[DECISION] First decision: FISSION Time is " << decision_start_time.seconds() << std::endl;
+                        return STAY; // 下一帧进入“已决策延迟窗口”
+                    }
+                    else
+                    {
+                        Maintain_state_start_time = this->get_clock()->now();
+                        target_transform.child_frame_id.clear();
+                        initial_decision = STAY;
+                        decision_start_time = this->get_clock()->now();
+                        std::cout << "[DECISION] First decision: STAY Time is " << decision_start_time.seconds() << std::endl;
+                        return STAY;
+                    }
+                }
+            }
+            else
+            {
+                // std::cout << "estimated_group_size =  " << estimated_group_size << std::endl;
+                // 群体未超阈值，重置稳定状态，避免卡在“稳定期未结束”
+                stabilization_timer_started = false;
+            }
+
+            if (actual_group_size < (desired_subgroup_size + groupsize_tolerance) && actual_group_size >= desired_subgroup_size) // size介于期望大小区间内
+            {
+                target_transform.child_frame_id.clear();
+                return STAY;
             }
         }
         else
         {
-            // std::cout << "estimated_group_size =  " << estimated_group_size << std::endl;
-            // 群体未超阈值，重置稳定状态，避免卡在“稳定期未结束”
-            stabilization_timer_started = false;
-        }
 
-        if (actual_group_size < (desired_subgroup_size + groupsize_tolerance) && actual_group_size >= desired_subgroup_size) // size介于期望大小区间内
-        {
-            target_transform.child_frame_id.clear();
-            return STAY;
-        }
-
-        if (actual_group_size < desired_subgroup_size)
-        {
-            if (this->get_clock()->now() - Maintain_state_start_time < rclcpp::Duration::from_seconds(1.0))
+            if (actual_group_size < desired_subgroup_size)
             {
-                target_transform.child_frame_id.clear();
-                return STAY;
-            }
-
-            if (actual_group_size != initial_group_size)
-            { // 如果 group size 大了，更新等待时间
-                if (actual_group_size > initial_group_size)
+                if (this->get_clock()->now() - Maintain_state_start_time < rclcpp::Duration::from_seconds(1.0))
                 {
-                    // std::cout << "size larger,from " << initial_group_size << " to " << actual_group_size << std::endl;
-                    initial_group_size = actual_group_size; // 更新 group size 记录
-                    wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
-                    stay_start_time = this->get_clock()->now(); // 重置等待
+                    target_transform.child_frame_id.clear();
+                    return STAY;
                 }
-                // 如果 group size小了，比较剩余时间与新时间，取小
-                if (actual_group_size < initial_group_size)
-                {
-                    rclcpp::Time now = this->get_clock()->now();
-                    rclcpp::Duration elapsed_time = now - stay_start_time;
-                    rclcpp::Duration remaining_time = wait_time - elapsed_time;
 
-                    rclcpp::Duration new_wait_time = rclcpp::Duration::from_seconds(
-                        static_cast<double>(Waiting_time_scale_factor * actual_group_size));
-
-                    if (new_wait_time < remaining_time)
+                if (actual_group_size != initial_group_size)
+                { // 如果 group size 大了，更新等待时间
+                    if (actual_group_size > initial_group_size)
                     {
-                        wait_time = new_wait_time;
-                        stay_start_time = now; // 重置起始时间
+                        // std::cout << "size larger,from " << initial_group_size << " to " << actual_group_size << std::endl;
+                        initial_group_size = actual_group_size; // 更新 group size 记录
+                        wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
+                        stay_start_time = this->get_clock()->now(); // 重置等待
                     }
+                    // 如果 group size小了，比较剩余时间与新时间，取小
+                    if (actual_group_size < initial_group_size)
+                    {
+                        rclcpp::Time now = this->get_clock()->now();
+                        rclcpp::Duration elapsed_time = now - stay_start_time;
+                        rclcpp::Duration remaining_time = wait_time - elapsed_time;
 
-                    initial_group_size = actual_group_size;
+                        rclcpp::Duration new_wait_time = rclcpp::Duration::from_seconds(
+                            static_cast<double>(Waiting_time_scale_factor * actual_group_size));
+
+                        if (new_wait_time < remaining_time)
+                        {
+                            wait_time = new_wait_time;
+                            stay_start_time = now; // 重置起始时间
+                        }
+
+                        initial_group_size = actual_group_size;
+                    }
                 }
-            }
 
-            // 检查当前时间是否超过 wait_time
-            rclcpp::Time time_now = this->get_clock()->now();
-            if ((time_now - stay_start_time).seconds() > wait_time.seconds())
-            {
-                std::cout << "\033[1;32m" << "[Stay]->[Fission]" << "\033[0m" << " Waiting time Run out," << "start time = " << stay_start_time.seconds() << ", wait time = " << wait_time.seconds() << " initial_group_size:" << initial_group_size << std::endl;
+                // 检查当前时间是否超过 wait_time
+                rclcpp::Time time_now = this->get_clock()->now();
+                if ((time_now - stay_start_time).seconds() > wait_time.seconds())
+                {
+                    std::cout << "\033[1;32m" << "[Stay]->[Fission]" << "\033[0m"
+                              << " Waiting time Run out,"
+                              << "start time = " << stay_start_time.seconds()
+                              << ", wait time = " << wait_time.seconds()
+                              << " initial_group_size:" << initial_group_size
+                              << std::endl;
 
-                fission_start_time = this->get_clock()->now();
-
-                original_group_child_frame_id_list.clear();
-                return FISSION;
+                    fission_start_time = this->get_clock()->now();
+                    original_group_child_frame_id_list.clear();
+                    return FISSION;
+                }
+                else
+                {
+                    target_transform.child_frame_id.clear();
+                    return STAY;
+                }
             }
             else
             {
-                target_transform.child_frame_id.clear();
-                return STAY;
+                std::pair<double, double> follow_result = sffm_estimate_posibility_range(desired_subgroup_size,
+                                                                                         arena_area,
+                                                                                         actual_group_size);
+
+                double follow_posibility = 1 - ((actual_group_size - desired_subgroup_size) / actual_group_size);
+                double follow_radius = 2;
+
+                sffm_choose_follow_target(follow_posibility, follow_radius);
+                if (target_transform.header.frame_id == "non-follower")
+                {
+                    original_group_child_frame_id_list.clear();
+                    fission_start_time = this->get_clock()->now();
+                    return FISSION; //
+                }
+                else
+                {
+                    target_transform.child_frame_id.clear();
+                    Maintain_state_start_time = this->get_clock()->now();
+                    return STAY;
+                }
             }
         }
         std::cout << "current size is " << actual_group_size << std::endl;
@@ -892,6 +1023,10 @@ void fissionFusion::sffm_choose_follow_target(double posibility, double follow_r
                 {
                     candidates.push_back(tf); // 保留小于期望大小的组内的邻居
                 }
+                else
+                {
+                    std::cout << "candidate group size is larger than desiredsize, size is: " << target_group_size << std::endl;
+                }
             }
             else
             {
@@ -981,7 +1116,7 @@ geometry_msgs::msg::TransformStamped fissionFusion::local_path_planning()
     // 偏转角（单位：弧度）
     double offset_angle = 50.0 * M_PI / 180.0; // 30度偏移
 
-    double factor = 1.0;
+    double factor = 2; // 臂章距離
     double min_distance = std::numeric_limits<double>::max();
     geometry_msgs::msg::TransformStamped nearest_tf;
     bool found = false;
@@ -1200,7 +1335,7 @@ std::pair<double, double> fissionFusion::pd_control_to_target(geometry_msgs::msg
     }
 
     // 停止条件
-    if (distance < 0.1)
+    if (distance < 0.05)
     {
         v = 0.0;
         omega = 0.0;
@@ -1554,7 +1689,14 @@ void fissionFusion::Pub_rab()
 
     if (current_state == FISSION)
     {
-        fission_sign = 1.0;
+        if (groupsize_tolerance > 0)
+        {
+            fission_sign = 1.0;
+        }
+        else
+        {
+            fission_sign = 0.0;
+        }
     }
     else
     {
@@ -1576,7 +1718,7 @@ double fissionFusion::smoothed_estimate_with_window(double new_estimate)
 {
     // 静态变量用于跨调用保持历史状态
     static std::deque<double> history;
-    const size_t W = 3;       // 滑动窗口大小
+    const size_t W = 1;       // 滑动窗口大小
     const double decay = 0.9; // 时间衰减因子（0.8~0.95 建议）
 
     // 添加新估计值

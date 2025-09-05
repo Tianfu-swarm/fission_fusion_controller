@@ -36,7 +36,7 @@ public:
     fissionFusion() : Node("fissionFusion")
     {
         // config
-        std::string package_path = ament_index_cpp::get_package_share_directory("fission_fusion");
+        std::string package_path = ament_index_cpp::get_package_share_directory("fission_fusion_controller");
         std::string config_path = package_path + "/config/config.yaml";
         fissionFusion::configure(config_path);
 
@@ -57,6 +57,8 @@ public:
             "radio_sensor", 10, std::bind(&fissionFusion::radio_sensor_callback, this, std::placeholders::_1));
         trigger_signal_subscription_ = this->create_subscription<std_msgs::msg::Header>(
             "/trigger_controller", 10, std::bind(&fissionFusion::trigger_controller_callback, this, std::placeholders::_1));
+        base_ground_subscription_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
+            "base_ground_sensor", 10, std::bind(&fissionFusion::base_ground_callback, this, std::placeholders::_1));
 
         // publisher
         path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("path_history", 10);
@@ -148,6 +150,7 @@ private:
     sensor_msgs::msg::PointCloud2 proximity_point;
     tf2_msgs::msg::TFMessage rab_tf;
     std_msgs::msg::Float64MultiArray radio_data;
+    std_msgs::msg::Float64MultiArray base_ground_data;
 
     void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
     {
@@ -204,6 +207,15 @@ private:
         }
     }
 
+    void base_ground_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+    {
+        base_ground_data.data.clear();
+        if (!msg->data.empty())
+        {
+            base_ground_data.data.insert(base_ground_data.data.end(), msg->data.begin(), msg->data.end());
+        }
+    }
+
     std::atomic_bool controller_busy_ = false;
     void trigger_controller_callback(const std_msgs::msg::Header::SharedPtr msg)
     {
@@ -236,7 +248,8 @@ private:
             if (controller_busy_.compare_exchange_strong(expected, true))
             {
                 // 成功设置 busy → 执行控制器
-                sffm_controler_step();
+                // sffm_controler_step();
+                convergence_controller_step();
                 controller_busy_ = false;
             }
             else
@@ -363,8 +376,7 @@ private:
     int target_id;
     int frame_length;
 
-    robot_state
-    update_state(robot_state current_robot_state);
+    robot_state update_state(robot_state current_robot_state);
 
     rclcpp::Time stabilization_start_time;
     bool stabilization_timer_started = false;
@@ -425,7 +437,7 @@ private:
     rclcpp::Duration Maintain_state_time = rclcpp::Duration::from_seconds(10.0);
     rclcpp::Time Maintain_state_start_time = this->get_clock()->now() - Maintain_state_time;
 
-    double Waiting_time_scale_factor = 1;
+    double Waiting_time_scale_factor = 3;
 
     rclcpp::Time pd_control_last_time = this->get_clock()->now();
 
@@ -435,10 +447,14 @@ private:
     std::mutex trigger_list_mutex_;
     std::deque<std_msgs::msg::Header> trigger_list_;
 
+    geometry_msgs::msg::TransformStamped stay_on_black();
+    geometry_msgs::msg::TransformStamped look_for_black();
+
     /*************************************************************************
      * extrema_propagation
      **************************************************************************/
-    double extrema_propagation();
+    double
+    extrema_propagation();
     double smoothed_estimate_with_window(double new_estimate);
     void initialize_vector();
     void pointwise_min(std::vector<double> &a, const std::vector<double> &b);
@@ -475,6 +491,13 @@ private:
     double fission_sign = 0;
 
     /*************************************************************************
+     * convergence experiment
+     **************************************************************************/
+    void convergence_controller_step();
+    void execute_state_behavior_convergence(robot_state state);
+    robot_state update_state_convergence(robot_state state);
+
+    /*************************************************************************
      * configure
      **************************************************************************/
     void configure(const std::string &yaml_file);
@@ -488,6 +511,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr proximity_point_subscription_;
     rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr rab_tf_subscription_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr radio_sensor_subscription_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr base_ground_subscription_;
     rclcpp::Subscription<std_msgs::msg::Header>::SharedPtr trigger_signal_subscription_;
 
     // publisher

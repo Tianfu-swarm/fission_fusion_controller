@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(fission_fusion)
+project(fission_fusion_controller)
 
 # Find required packages
 find_package(ament_cmake REQUIRED)
@@ -22,13 +22,15 @@ include_directories(
 )
 
 # Add the executable
-add_executable(fission_fusion src/visualization.cpp 
-                              src/main.cpp 
-                              src/SFFM.cpp
-                              src/extrema_propagation.cpp)
+add_executable(fission_fusion_controller  src/visualization.cpp 
+                                          src/main.cpp 
+                                          src/SFFM.cpp
+                                          src/extrema_propagation.cpp
+                                          src/ground_position.cpp
+                                          src/convergence_experment.cpp)
 
 # Link dependencies to the executable
-ament_target_dependencies(fission_fusion
+ament_target_dependencies(fission_fusion_controller
   rclcpp
   std_msgs
   yaml-cpp
@@ -42,7 +44,7 @@ ament_target_dependencies(fission_fusion
   sensor_msgs
 )
 
-target_link_libraries(fission_fusion yaml-cpp)
+target_link_libraries(fission_fusion_controller yaml-cpp)
 
 # Install launch files
 install(DIRECTORY launch/
@@ -60,7 +62,7 @@ configure_file(${CMAKE_SOURCE_DIR}/config/config.yaml ${CMAKE_BINARY_DIR}/config
 
 # Install the target
 install(TARGETS
-  fission_fusion
+  fission_fusion_controller
   DESTINATION lib/${PROJECT_NAME}
 )
 
