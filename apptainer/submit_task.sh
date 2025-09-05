@@ -3,8 +3,8 @@
 #$ -cwd
 #$ -o "logs/output.$JOB_ID.$TASK_ID.log"
 #$ -e "logs/error.$JOB_ID.$TASK_ID.log"
-#$ -t 1-10
-#$ -tc 10
+#$ -t 1-1
+#$ -tc 1
 #$ -j y
 #$ -pe smp 45
 #$ -l h_vmem=2G

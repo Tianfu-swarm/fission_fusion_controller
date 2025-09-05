@@ -65,19 +65,29 @@ ros2 launch fission_fusion_controller run.launch.py numbers:=42.0 \
                                                     isConCommunication:=true \
                                                     use_rviz:=false \
                                                     use_sim_time:=true \
-                                                    results_file_path:=${results_path}&
+                                                    results_file_path:=${RESULTS_FILE}&
 ROS2_PID=$!
 echo "[READY] Controller initialized"
 sleep 1
 
 # 启动 ARGoS3（绑定核心 42-44）
 echo "Starting ARGoS3 on cores $ARGOS_CORES"
-taskset -c $ARGOS_CORES \
-cd /opt/container_env/fission_fusion_controller_ws/src/fission_fusion_controller/experiments
-export LD_LIBRARY_PATH=/usr/local/lib/argos3:/opt/ros/humble/lib:/opt/container_env/fission_fusion_controller_ws/install/argos3_ros_bridge/lib:$LD_LIBRARY_PATH
-export ARGOS_PLUGIN_PATH=/usr/local/lib/argos3:/opt/container_env/fission_fusion_controller_ws/install/argos3_ros_bridge/lib
-argos3 -c convergence.argos &
+
+EXP_DIR="/opt/container_env/fission_fusion_controller_ws/src/fission_fusion_controller/experiments"
+
+(
+  set -e
+  cd "$EXP_DIR" || { echo "[ERROR] cd $EXP_DIR failed"; exit 1; }
+
+  # 这些变量只在子进程里生效，避免污染全局
+  export LD_LIBRARY_PATH="/usr/local/lib/argos3:/opt/ros/humble/lib:/opt/container_env/fission_fusion_controller_ws/install/argos3_ros_bridge/lib:${LD_LIBRARY_PATH-}"
+  export ARGOS_PLUGIN_PATH="/usr/local/lib/argos3:/opt/container_env/fission_fusion_controller_ws/install/argos3_ros_bridge/lib"
+
+  # 用 exec 让子 shell 直接变成 argos3 进程（PID 更好管理）
+  exec taskset -c "$ARGOS_CORES" argos3 -c ./convergence.argos
+) &
 ARGOS_PID=$!
+
 
 ros2 topic hz /bot0/pose &
 HZ_PID=$!
