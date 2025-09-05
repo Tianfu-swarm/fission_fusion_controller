@@ -26,7 +26,7 @@ lscpu | grep "CPU(s):"
 BASE_DIR=$PWD
 LOCAL_RESULT_DIR=/data/scc/$USER/result
 FINAL_RESULT_DIR=$BASE_DIR/result
-SCRIPT_PATH=$BASE_DIR/container_scrip.sh
+SCRIPT_PATH=$BASE_DIR/convergence_experiments.sh
 CONTAINER_NAME=convergence_experiments.sif
 SIF_PATH=$BASE_DIR/$CONTAINER_NAME
 SHARED_LOCAL_SIF=/data/scc/$USER/$CONTAINER_NAME
