@@ -60,7 +60,7 @@ sleep 1 # Increase sleep time if necessary
 
 # Run ARGoS3 with the specified configuration file
 taskset -c $ARGOS_CORE \
-argos3 -c ../experiments/convergence.argos &
+argos3 -c ../experiments/convergence.argos & 
 ARGOS_PID=$!
 
 # ros2 topic hz /bot0/pose &
