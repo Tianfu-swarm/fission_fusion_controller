@@ -26,8 +26,8 @@ lscpu | grep "CPU(s):"
 BASE_DIR=$PWD
 LOCAL_RESULT_DIR=/data/scc/$USER/result
 FINAL_RESULT_DIR=$BASE_DIR/result
-SCRIPT_PATH=$BASE_DIR/benchmark.sh
-CONTAINER_NAME=benchmark.sif
+SCRIPT_PATH=$BASE_DIR/benchmark_v2.sh
+CONTAINER_NAME=benchmark_v2.sif
 SIF_PATH=$BASE_DIR/$CONTAINER_NAME
 SHARED_LOCAL_SIF=/data/scc/$USER/$CONTAINER_NAME
 LOCAL_SIF=/tmp/benchmark_${TASK_ID}.sif
@@ -69,11 +69,8 @@ for ((i=1; i<=SUBTASKS_PER_TASK; i++)); do
     --bind $SCRIPT_PATH:/script.sh \
     --bind $LOCAL_RESULT_DIR:/results \
     $LOCAL_SIF \
-    bash /script.sh /results/task_${RESULT_ID}.csv &
+    bash /script.sh /results/task_${RESULT_ID}.csv
 
-  CONTAINER_PID=$!
-  sleep 10
-  wait $CONTAINER_PID
 
   echo "[$(date)] Subtask $RESULT_ID completed."
 

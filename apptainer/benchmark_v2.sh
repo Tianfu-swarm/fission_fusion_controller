@@ -89,8 +89,8 @@ EXP_DIR="/opt/container_env/fission_fusion_controller_ws/src/fission_fusion_cont
 ARGOS_PID=$!
 
 
-ros2 topic hz /bot0/pose &
-HZ_PID=$!
+# ros2 topic hz /bot0/pose &
+# HZ_PID=$!
 
 echo "[READY] ARGoS initialized"
 

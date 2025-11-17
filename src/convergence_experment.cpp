@@ -3,9 +3,9 @@
 
 void fissionFusion::convergence_controller_step()
 {
-    std::ofstream null_stream("/dev/null");      // Linux/Unix
-    std::streambuf *old_buf = std::cout.rdbuf(); // 保存原来的缓冲区
-    std::cout.rdbuf(null_stream.rdbuf());        // 重定向到空
+    // std::ofstream null_stream("/dev/null");      // Linux/Unix
+    // std::streambuf *old_buf = std::cout.rdbuf(); // 保存原来的缓冲区
+    // std::cout.rdbuf(null_stream.rdbuf());        // 重定向到空
     // 恢复
     // std::cout.rdbuf(old_buf);
 
