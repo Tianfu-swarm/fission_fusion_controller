@@ -59,6 +59,8 @@ public:
             "/trigger_controller", 10, std::bind(&fissionFusion::trigger_controller_callback, this, std::placeholders::_1));
         base_ground_subscription_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
             "base_ground_sensor", 10, std::bind(&fissionFusion::base_ground_callback, this, std::placeholders::_1));
+        motor_ground_subscription_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
+            "motor_ground_sensor", 10, std::bind(&fissionFusion::motor_ground_callback, this, std::placeholders::_1));
 
         // publisher
         path_publisher_ = this->create_publisher<nav_msgs::msg::Path>("path_history", 10);
@@ -151,6 +153,7 @@ private:
     tf2_msgs::msg::TFMessage rab_tf;
     std_msgs::msg::Float64MultiArray radio_data;
     std_msgs::msg::Float64MultiArray base_ground_data;
+    std_msgs::msg::Float64MultiArray motor_ground_data;
 
     void pose_callback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
     {
@@ -216,6 +219,15 @@ private:
         }
     }
 
+    void motor_ground_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+    {
+        motor_ground_data.data.clear();
+        if (!msg->data.empty())
+        {
+            motor_ground_data.data.insert(motor_ground_data.data.end(), msg->data.begin(), msg->data.end());
+        }
+    }
+
     std::atomic_bool controller_busy_ = false;
     void trigger_controller_callback(const std_msgs::msg::Header::SharedPtr msg)
     {
@@ -250,6 +262,7 @@ private:
                 // 成功设置 busy → 执行控制器
                 // sffm_controler_step();
                 convergence_controller_step();
+                // cps_task_step();
                 controller_busy_ = false;
             }
             else
@@ -297,8 +310,8 @@ private:
     double Kd_distance = 0.02;
     double Kp_angle = 0.05;
     double Kd_angle = 0.05;
-    double max_velocity = 8;
-    double max_omega = 5;
+    double max_velocity = 1;
+    double max_omega = 1;
 
     /*************************************************************************
      * sffm controller
@@ -351,7 +364,7 @@ private:
                                                              double arena_area,
                                                              double nums_robots);
 
-    void sffm_choose_follow_target(double follow_posibility, double follow_radius);
+    void sffm_choose_follow_target(double posibility, double follow_radius);
 
     double calculate_distance(const geometry_msgs::msg::PoseStamped &p1,
                               const geometry_msgs::msg::PoseStamped &p2);
@@ -359,13 +372,13 @@ private:
     void refresh_target_transform();
     std::pair<double, double> pd_control_to_target(geometry_msgs::msg::TransformStamped pose);
 
-    geometry_msgs::msg::TransformStamped computeGLJTarget();
+    geometry_msgs::msg::TransformStamped computeGLJTarget(double stable_distance = 0.5, double force = 0.5);
 
     geometry_msgs::msg::TransformStamped computeGroupGLJTarget();
     std::vector<int> original_group_child_frame_id_list;
 
     // local ptah planning
-    geometry_msgs::msg::TransformStamped local_path_planning();
+    geometry_msgs::msg::TransformStamped local_path_planning(double inflation_distance = 2.0);
     // random speed
     std::pair<double, double> random_walk(double mean_v,
                                           double std_v,
@@ -437,7 +450,7 @@ private:
     rclcpp::Duration Maintain_state_time = rclcpp::Duration::from_seconds(10.0);
     rclcpp::Time Maintain_state_start_time = this->get_clock()->now() - Maintain_state_time;
 
-    double Waiting_time_scale_factor = 3;
+    double Waiting_time_scale_factor = 5;
 
     rclcpp::Time pd_control_last_time = this->get_clock()->now();
 
@@ -447,14 +460,10 @@ private:
     std::mutex trigger_list_mutex_;
     std::deque<std_msgs::msg::Header> trigger_list_;
 
-    geometry_msgs::msg::TransformStamped stay_on_black();
-    geometry_msgs::msg::TransformStamped look_for_black();
-
     /*************************************************************************
      * extrema_propagation
      **************************************************************************/
-    double
-    extrema_propagation();
+    double extrema_propagation();
     double smoothed_estimate_with_window(double new_estimate);
     void initialize_vector();
     void pointwise_min(std::vector<double> &a, const std::vector<double> &b);
@@ -489,6 +498,43 @@ private:
 
     void Pub_rab();
     double fission_sign = 0;
+    /*************************************************************************
+     * frame indices
+     **************************************************************************/
+    // id -> 指向 rab_data.data 中该 id 起始位置的偏移
+    std::unordered_map<int, size_t> rab_offset; // 零拷贝，不再存 vector<double>
+    int rab_stride = 0;                         // = frame_length
+
+    // TF 条目列表（和你现在类似，但不需要 child_frame_id map）
+    struct TfEntry
+    {
+        const geometry_msgs::msg::TransformStamped *tf;
+        int id; // -1 表示未解析
+        bool is_on_gray;
+        double dx, dy;
+        double d2;
+        bool is_full;
+    };
+    std::vector<TfEntry> tf_entries;
+
+    // 额外加一个 int 索引：id -> tf_entries 下标（若存在）
+    std::unordered_map<int, size_t> tf_index_by_id;
+
+    // 快速解析工具（可放 static 或 private）
+    bool parse_ns_id_fast(const std::string &ns, int &id);
+
+    // —— 每帧构建索引（推荐私有） ——
+    void build_frame_indices();
+
+    // 便捷零拷贝读取：返回指向该 id 的 rab 帧起始指针；失败返回 nullptr
+    const double *get_rab_ptr(int id) const;
+    /*************************************************************************
+     * Ground sensor
+     **************************************************************************/
+    geometry_msgs::msg::TransformStamped stay_in_black();
+    geometry_msgs::msg::TransformStamped look_for_black(double inflation_distance = 1.0);
+    geometry_msgs::msg::TransformStamped stay_in_gray();
+    geometry_msgs::msg::TransformStamped look_for_gray(double inflation_distance = 1.0);
 
     /*************************************************************************
      * convergence experiment
@@ -497,6 +543,20 @@ private:
     void execute_state_behavior_convergence(robot_state state);
     robot_state update_state_convergence(robot_state state);
 
+    /*************************************************************************
+     * cps task
+     **************************************************************************/
+    void cps_task_step();
+    void execute_state_behavior_cps(robot_state state);
+    robot_state update_state_cps(robot_state state);
+    void cps_task_choose_follow_target(double posibility, double follow_radius);
+    bool is_majority_same_type(double radius = 1.0);
+    void Pub_rab_cps();
+    // double is_on_gray = 0.0;
+    double is_full = 0.0;
+    void update_desired_subgroup_size_from_gray();
+    geometry_msgs::msg::TransformStamped computeSpringTarget(double stable_distance = 1.0, double force = 0.5);
+    double spring_distance = 1.0;
     /*************************************************************************
      * configure
      **************************************************************************/
@@ -512,6 +572,7 @@ private:
     rclcpp::Subscription<tf2_msgs::msg::TFMessage>::SharedPtr rab_tf_subscription_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr radio_sensor_subscription_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr base_ground_subscription_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr motor_ground_subscription_;
     rclcpp::Subscription<std_msgs::msg::Header>::SharedPtr trigger_signal_subscription_;
 
     // publisher

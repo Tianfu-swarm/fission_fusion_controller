@@ -26,8 +26,9 @@ add_executable(fission_fusion_controller  src/visualization.cpp
                                           src/main.cpp 
                                           src/SFFM.cpp
                                           src/extrema_propagation.cpp
-                                          src/ground_position.cpp
-                                          src/convergence_experment.cpp)
+                                          src/ground_sensor.cpp
+                                          src/convergence_experment.cpp
+                                          src/cps_task.cpp)
 
 # Link dependencies to the executable
 ament_target_dependencies(fission_fusion_controller

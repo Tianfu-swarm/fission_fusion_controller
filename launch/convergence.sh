@@ -40,13 +40,13 @@ results_path="../../data/result_${timestamp_result}"
 
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
-ros2 launch fission_fusion_controller run.launch.py numbers:=42.0 \
+ros2 launch fission_fusion_controller run.launch.py numbers:=12.0 \
                                                     desired_subgroup_size:=14.0 \
-                                                    follow_range:=10.0 \
+                                                    follow_range:=5.0 \
                                                     subgroup_size_sigma:=0.0 \
                                                     groupsize_tolerance:=0.0 \
-                                                    K:=800 \
-                                                    early_converge_window:=8 \
+                                                    K:=1000 \
+                                                    early_converge_window:=4 \
                                                     isModelworks:=false \
                                                     isMinCommunication:=true \
                                                     isConCommunication:=true \
@@ -62,6 +62,9 @@ sleep 1 # Increase sleep time if necessary
 taskset -c $ARGOS_CORE \
 argos3 -c ../experiments/convergence.argos &
 ARGOS_PID=$!
+
+# ros2 topic hz /bot0/pose &
+# HZ_PID=$!
 
 # Wait for 5 minutes (300 seconds) before stopping the current iteration
 sleep 6000

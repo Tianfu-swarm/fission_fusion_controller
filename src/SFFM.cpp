@@ -330,7 +330,7 @@ void fissionFusion::execute_state_behavior(robot_state state)
         {
 
             geometry_msgs::msg::TransformStamped GLJTarget = computeGLJTarget();
-            geometry_msgs::msg::TransformStamped BlackTarget = stay_on_black();
+            geometry_msgs::msg::TransformStamped BlackTarget = stay_in_black();
 
             double w_glj = 0.0;
             double w_black = 0.3;
@@ -937,124 +937,60 @@ fissionFusion::robot_state fissionFusion::update_state(robot_state current_robot
 
 void fissionFusion::sffm_choose_follow_target(double posibility, double follow_radius)
 {
-    // 初始化为空
     target_transform.header.frame_id = "none";
 
-    // 1. 随机决定是否跟随
-    std::random_device rd;
-    std::mt19937 rng(rd());
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-
-    double random_value = dist(rng);
-    if (random_value > posibility)
+    static std::mt19937 rng{std::random_device{}()};
+    std::uniform_real_distribution<double> dist01(0.0, 1.0);
+    if (dist01(rng) > posibility)
     {
         target_transform.header.frame_id = "non-follower";
         return;
     }
 
-    // 2. 获取当前命名空间
-    std::string ns = this->get_namespace(); // "/bot0"
-    if (!ns.empty() && ns.front() == '/')
+    const double r2 = follow_radius * follow_radius;
+    std::vector<const geometry_msgs::msg::TransformStamped *> candidates;
+    candidates.reserve(tf_entries.size());
+
+    for (const auto &e : tf_entries)
     {
-        ns.erase(0, 1); // "bot0"
+        if (e.tf->child_frame_id == e.tf->header.frame_id)
+            continue; // 自己
+        if (e.is_on_gray)
+            continue; // 跳过 fissioner
+        if (e.d2 > r2)
+            continue;
+
+        if (isMinCommunication || isConCommunication)
+        {
+            if (e.id == -1)
+                continue;
+            const double *frame = get_rab_ptr(e.id);
+            if (!frame)
+                continue;
+            if (frame[1] == -1)
+                continue; // 无 group size
+
+            double target_group_size = frame[1];
+            if (target_group_size >= desired_subgroup_size + groupsize_tolerance)
+                continue;
+
+            double target_desired = frame[2]; // 对方 desired_subgroup_size
+            if (target_desired != desired_subgroup_size)
+            {
+                continue; // 不考虑 desired 不同的机器人
+            }
+        }
+        candidates.push_back(e.tf);
     }
 
-    // 3. 筛选候选目标
-    std::vector<geometry_msgs::msg::TransformStamped> candidates;
-    for (auto &tf : rab_tf.transforms)
-    {
-
-        if (tf.child_frame_id == tf.header.frame_id)
-        {
-            continue; // 跳过自己
-        }
-
-        // 跳过 fissioner
-        std::regex pattern(R"(bot([0-9]+)/base_link)");
-        std::smatch match;
-        if (std::regex_match(tf.child_frame_id, match, pattern))
-        {
-            int id = std::stoi(match[1]);
-
-            std::vector<double> rab_data = Extract_Rab_Data(id); // 返回 vector<double>
-
-            if (rab_data.size() < frame_length)
-            {
-                continue; // 数据不够，跳过
-            }
-
-            if (rab_data[3] == 1.0)
-            {
-                continue; // 是 fissioner，跳过
-            }
-        }
-
-        // 提取平移距离
-        double dx = tf.transform.translation.x;
-        double dy = tf.transform.translation.y;
-        double dz = tf.transform.translation.z;
-
-        double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-
-        if (distance <= follow_radius)
-        {
-            if (isMinCommunication == true)
-            {
-                std::size_t bot_pos = tf.child_frame_id.find("bot");
-                std::size_t slash_pos = tf.child_frame_id.find("/", bot_pos);
-                std::string id_str = tf.child_frame_id.substr(bot_pos + 3, slash_pos - (bot_pos + 3));
-                double id = std::stod(id_str);
-
-                double target_group_size;
-                auto target_data = Extract_Rab_Data(id);
-                if (target_data.size() < frame_length)
-                    continue;
-
-                if (target_data[1] != -1)
-                {
-                    target_group_size = target_data[1];
-                }
-                else
-                {
-                    continue;
-                }
-
-                if (target_group_size < desired_subgroup_size + groupsize_tolerance)
-                {
-                    candidates.push_back(tf); // 保留小于期望大小的组内的邻居
-                }
-                else
-                {
-                    std::cout << "candidate group size is larger than desiredsize, size is: " << target_group_size << std::endl;
-                }
-            }
-            else
-            {
-                candidates.push_back(tf); // 仅保留在范围内的邻居
-            }
-        }
-    }
-
-    // 4. 从筛选后的候选中随机选择一个
     if (!candidates.empty())
     {
-        std::uniform_int_distribution<> index_dist(0, candidates.size() - 1);
-        int index = index_dist(rng);
-        target_transform = candidates[index];
-
-        double dx = target_transform.transform.translation.x;
-        double dy = target_transform.transform.translation.y;
-        double dz = target_transform.transform.translation.z;
-        double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-
-        std::size_t bot_pos = target_transform.child_frame_id.find("bot");
-        std::size_t slash_pos = target_transform.child_frame_id.find("/", bot_pos);
-        std::string id_str = target_transform.child_frame_id.substr(bot_pos + 3, slash_pos - (bot_pos + 3));
-        double id = std::stod(id_str);
+        std::uniform_int_distribution<size_t> pick(0, candidates.size() - 1);
+        target_transform = *candidates[pick(rng)];
     }
     else
     {
-        target_transform.header.frame_id = "none"; // 没有符合条件的目标
+        target_transform.header.frame_id = "none";
     }
 }
 
@@ -1106,84 +1042,58 @@ double fissionFusion::calculate_distance(const geometry_msgs::msg::PoseStamped &
 }
 
 // local path planning
-geometry_msgs::msg::TransformStamped fissionFusion::local_path_planning()
+geometry_msgs::msg::TransformStamped fissionFusion::local_path_planning(double inflation_distance)
 {
     geometry_msgs::msg::TransformStamped target;
     target.header.frame_id = "base_link";
     target.child_frame_id = "none";
-    target.transform.rotation.w = 1.0; // 无旋转
+    target.transform.rotation.w = 1.0;
 
-    // 偏转角（单位：弧度）
-    double offset_angle = 50.0 * M_PI / 180.0; // 30度偏移
+    const double offset_angle = 50.0 * M_PI / 180.0;
+    const double factor = inflation_distance; // 避障距离
 
-    double factor = 2; // 臂章距離
-    double min_distance = std::numeric_limits<double>::max();
-    geometry_msgs::msg::TransformStamped nearest_tf;
-    bool found = false;
+    double best_d2 = std::numeric_limits<double>::infinity();
+    const TfEntry *nearest = nullptr;
 
-    // 找最近邻居
-    for (const auto &tf : rab_tf.transforms)
+    for (const auto &e : tf_entries)
     {
-        if (tf.child_frame_id == tf.header.frame_id)
-            continue;
-
-        double x = tf.transform.translation.x;
-        double y = tf.transform.translation.y;
-        double distance = std::sqrt(x * x + y * y);
-
-        if (distance < min_distance)
+        if (e.tf->child_frame_id == e.tf->header.frame_id)
+            continue; // 跳过自己
+        if (e.d2 < best_d2)
         {
-            min_distance = distance;
-            nearest_tf = tf;
-            found = true;
+            best_d2 = e.d2;
+            nearest = &e;
         }
     }
 
-    if (found && min_distance < factor)
+    if (nearest && best_d2 < factor * factor)
     {
-        double dx = nearest_tf.transform.translation.x;
-        double dy = nearest_tf.transform.translation.y;
-        double distance = std::hypot(dx, dy);
+        const double dx = nearest->dx, dy = nearest->dy;
+        const double angle_to_other = std::atan2(dy, dx);
 
-        // 计算邻居方向
-        double angle_to_other = std::atan2(dy, dx);
+        const double tangent_left = angle_to_other + M_PI_2;
+        const double tangent_right = angle_to_other - M_PI_2;
 
-        // 计算切线方向
-        double tangent_left = angle_to_other + M_PI_2;
-        double tangent_right = angle_to_other - M_PI_2;
+        const double left_x = std::cos(tangent_left), left_y = std::sin(tangent_left);
+        const double right_x = std::cos(tangent_right), right_y = std::sin(tangent_right);
 
-        // 将角度转换为向量（单位向量）
-        double left_x = std::cos(tangent_left);
-        double left_y = std::sin(tangent_left);
-        double right_x = std::cos(tangent_right);
-        double right_y = std::sin(tangent_right);
+        const double cos_left = left_x; // 与前向 [1,0] 的点积
+        const double cos_right = right_x;
 
-        // base_link 正前方向量
-        double forward_x = 1.0;
-        double forward_y = 0.0;
+        const double tangent_angle = (cos_left > cos_right)
+                                         ? (tangent_left + offset_angle)
+                                         : (tangent_right - offset_angle);
 
-        // 计算与前方的点积（余弦值）
-        double cos_left = left_x * forward_x + left_y * forward_y;
-        double cos_right = right_x * forward_x + right_y * forward_y;
-
-        // 选择与前方更接近的切线方向，并加偏移角
-        double tangent_angle = (cos_left > cos_right)
-                                   ? (tangent_left + offset_angle)
-                                   : (tangent_right - offset_angle);
-
-        // 设置目标点
-        double avoid_step = 0.5;
+        const double avoid_step = 0.5;
         target.child_frame_id = "avoid_target";
         target.transform.translation.x = avoid_step * std::cos(tangent_angle);
         target.transform.translation.y = avoid_step * std::sin(tangent_angle);
     }
     else
     {
-        // 没找到目标，留空（表示不动）
         target.transform.translation.x = 0.0;
         target.transform.translation.y = 0.0;
     }
-
     return target;
 }
 
@@ -1371,115 +1281,153 @@ std::pair<double, double> fissionFusion::random_walk(double mean_v,
     return {v, omega};
 }
 
-geometry_msgs::msg::TransformStamped fissionFusion::computeGLJTarget()
+geometry_msgs::msg::TransformStamped fissionFusion::computeGLJTarget(double stable_distance, double force)
 {
-    double sigma = 0.5;   // 期望距离
-    double epsilon = 0.3; // 力强度
-    const double n = 4.0;
-    const double m = 2.0;
-    double effective_range = follow_range; // 最大距离
-    double max_force = 0.5;                // 最大力
+    const int max_neighbors = 5; // K
+    double sigma = stable_distance, epsilon = 0.3;
+    const double n = 4.0, m = 2.0;
+    double effective_range = follow_range;
+    double max_force = force;
 
-    double fx_total = 0.0;
-    double fy_total = 0.0;
+    double fx_total = 0.0, fy_total = 0.0;
 
-    if (fission_sign == 1) // 如果是正在fission，则与其他fissioner保持紧凑
+    if (fission_sign == 1)
     {
+        std::cout << "+++ new group" << std::endl;
         sigma = 0.5;
-        epsilon = 1;
-        effective_range = 10 * sigma;
-        // 提取rab消息中fission_sign为1的robotid，寻找他的tf计算glj
+        epsilon = 1.0;
+        effective_range = 10.0 * sigma;
+
         const auto &rabData = rab_data.data;
         for (size_t i = 0; i + frame_length <= rabData.size(); i += frame_length)
         {
-            // std::cout << rab_data.data[i + 0] << " , " << rab_data.data[i + 1] << " , " << rab_data.data[i + 2] << " , " << rab_data.data[i + 3] << " , " << frame_length << std::endl;
-            // std::cout << "fission sign is " << rabData[i + frame_length - 1] << std::endl;
-            if (rabData[i + frame_length - 1] == 1) // 对应消息的fission_sign也是true
+            if (rabData[i + frame_length - 1] != 1)
+                continue; // 只看 fissioner
+
+            int id_number = static_cast<int>(std::round(rabData[i]));
+            std::string child_frame_id = "bot" + std::to_string(id_number) + "/base_link";
+
+            int __id = -1;
+            if (!parse_ns_id_fast(child_frame_id, __id))
+                continue;
+
+            auto it = tf_index_by_id.find(__id);
+            if (it == tf_index_by_id.end())
+                continue;
+
+            const auto &e = tf_entries[it->second];
+
+            const double d2 = e.d2;
+            if (d2 < 1e-10)
+                continue;
+            if (effective_range > 0 && d2 >= effective_range * effective_range)
+                continue;
+
+            const double d = std::sqrt(d2);
+            double f_mag;
+            if (n == 4.0 && m == 2.0)
             {
-                // std::cout << "get another fissioner, id is " << rabData[i] << std::endl;
-                // 提取id，并查找tf关系
-                int id_number = static_cast<int>(std::round(rabData[i])); // 每个rabData的第一个数是id
-                // rab_tf的child_frame_id的形式为 bot10/base_link
-                std::string child_frame_id = "bot" + std::to_string(id_number) + "/base_link";
-                for (const auto &tf : rab_tf.transforms)
-                {
-                    // std::cout << "tf.child_frame_id is " << tf.child_frame_id << std::endl;
-                    // std::cout << "target.child_frame_id is " << child_frame_id << std::endl;
-                    if (tf.child_frame_id == child_frame_id)
-                    {
-                        double dx = tf.transform.translation.x;
-                        double dy = tf.transform.translation.y;
-                        double d = std::hypot(dx, dy);
-
-                        if (d < 1e-5 || d >= effective_range)
-                            continue;
-
-                        double force = -epsilon * (std::pow(sigma / d, n) - std::pow(sigma / d, m)) / d;
-
-                        fx_total += force * (dx / d);
-                        fy_total += force * (dy / d);
-                    }
-                }
+                const double inv_d = 1.0 / d;
+                const double inv_d2 = inv_d * inv_d;
+                const double inv_d4 = inv_d2 * inv_d2;
+                const double sigma2 = sigma * sigma;
+                const double sigma4 = sigma2 * sigma2;
+                f_mag = -epsilon * (sigma4 * inv_d4 * inv_d - sigma2 * inv_d2 * inv_d);
             }
+            else
+            {
+                f_mag = -epsilon * (std::pow(sigma / d, n) - std::pow(sigma / d, m)) / d;
+            }
+            fx_total += f_mag * (e.dx / d);
+            fy_total += f_mag * (e.dy / d);
         }
     }
     else
     {
-        for (const auto &tf : rab_tf.transforms)
+        struct Node
         {
-            double dx = tf.transform.translation.x;
-            double dy = tf.transform.translation.y;
-            double d = std::hypot(dx, dy);
+            double d2, dx, dy;
+        };
+        const int K = std::max(0, max_neighbors);
+        std::vector<Node> heap;
+        heap.reserve(K);
 
-            if (d < 1e-4 || d >= effective_range)
+        for (const auto &e : tf_entries)
+        {
+            if (e.d2 < 1e-8)
+                continue;
+            if (effective_range > 0 && e.d2 >= effective_range * effective_range)
+                continue;
+            if (e.is_on_gray)
                 continue;
 
-            // 跳过 fissioner
-            std::regex pattern(R"(bot([0-9]+)/base_link)");
-            std::smatch match;
-            if (std::regex_match(tf.child_frame_id, match, pattern))
+            if ((int)heap.size() < K)
             {
-                int id = std::stoi(match[1]);
-
-                std::vector<double> rab_data = Extract_Rab_Data(id); // 假设返回 vector<double>
-
-                if (rab_data[3] == 1)
-                {
-                    continue; // 是 fissioner，跳过
-                }
+                heap.push_back({e.d2, e.dx, e.dy});
+                if ((int)heap.size() == K)
+                    std::make_heap(heap.begin(), heap.end(),
+                                   [](const Node &a, const Node &b)
+                                   { return a.d2 < b.d2; });
             }
+            else if (K > 0 && e.d2 < heap.front().d2)
+            {
+                std::pop_heap(heap.begin(), heap.end(),
+                              [](const Node &a, const Node &b)
+                              { return a.d2 < b.d2; });
+                heap.back() = {e.d2, e.dx, e.dy};
+                std::push_heap(heap.begin(), heap.end(),
+                               [](const Node &a, const Node &b)
+                               { return a.d2 < b.d2; });
+            }
+        }
 
-            double force = -epsilon * (std::pow(sigma / d, n) - std::pow(sigma / d, m)) / d;
-
-            fx_total += force * (dx / d);
-            fy_total += force * (dy / d);
+        if (n == 4.0 && m == 2.0)
+        {
+            const double sigma2 = sigma * sigma;
+            const double sigma4 = sigma2 * sigma2;
+            for (const auto &node : heap)
+            {
+                const double d = std::sqrt(node.d2);
+                const double inv_d = 1.0 / d;
+                const double inv_d2 = inv_d * inv_d;
+                const double inv_d4 = inv_d2 * inv_d2;
+                const double f_mag = -epsilon * (sigma4 * inv_d4 * inv_d - sigma2 * inv_d2 * inv_d);
+                fx_total += f_mag * (node.dx * inv_d);
+                fy_total += f_mag * (node.dy * inv_d);
+            }
+        }
+        else
+        {
+            for (const auto &node : heap)
+            {
+                const double d = std::sqrt(node.d2);
+                const double f_mag = -epsilon * (std::pow(sigma / d, n) - std::pow(sigma / d, m)) / d;
+                fx_total += f_mag * (node.dx / d);
+                fy_total += f_mag * (node.dy / d);
+            }
         }
     }
 
-    double mag = std::hypot(fx_total, fy_total);
+    const double mag = std::hypot(fx_total, fy_total);
     if (mag > max_force)
     {
-        fx_total = fx_total / mag * max_force;
-        fy_total = fy_total / mag * max_force;
+        const double s = max_force / mag;
+        fx_total *= s;
+        fy_total *= s;
     }
-    if (mag < 0.001)
+    if (mag < 1e-3)
     {
         fx_total = 0.0;
         fy_total = 0.0;
     }
 
     geometry_msgs::msg::TransformStamped GLJTarget;
-    GLJTarget.header.stamp = rclcpp::Clock().now();
-    GLJTarget.header.frame_id = "base_link"; // 相对于自身
+    GLJTarget.header.stamp = this->get_clock()->now();
+    GLJTarget.header.frame_id = "base_link";
     GLJTarget.transform.translation.x = fx_total;
     GLJTarget.transform.translation.y = fy_total;
     GLJTarget.transform.translation.z = 0.0;
-
-    GLJTarget.transform.rotation.x = 0.0;
-    GLJTarget.transform.rotation.y = 0.0;
-    GLJTarget.transform.rotation.z = 0.0;
     GLJTarget.transform.rotation.w = 1.0;
-
     return GLJTarget;
 }
 
@@ -1581,122 +1529,85 @@ geometry_msgs::msg::TransformStamped fissionFusion::computeGroupGLJTarget()
 
 std::vector<double> fissionFusion::Extract_Rab_Data(int id_number)
 {
-    std::vector<double> result;
+    std::vector<double> out;
+
+    // 先用零拷贝索引
+    auto it = rab_offset.find(id_number);
+    if (it != rab_offset.end())
+    {
+        const auto &d = rab_data.data;
+        size_t off = it->second;
+        if (off + rab_stride <= d.size())
+        {
+            out.reserve(rab_stride);
+            out.insert(out.end(), d.begin() + off, d.begin() + off + rab_stride);
+            return out;
+        }
+    }
+
+    // 回退：保持旧行为（线性扫）
     const auto &d = rab_data.data;
-
     if (frame_length < 2)
-    {
-        RCLCPP_ERROR(this->get_logger(), "Invalid frame_length (%d), must be >= 2", frame_length);
-        return result;
-    }
-
-    if (d.size() % frame_length != 0)
-    {
-        RCLCPP_WARN(this->get_logger(),
-                    "rab_data size (%zu) is not divisible by frame_length (%d), some data may be ignored",
-                    d.size(), frame_length);
-    }
-
+        return out;
     for (size_t i = 0; i + frame_length <= d.size(); i += frame_length)
     {
         int id = static_cast<int>(std::round(d[i]));
         if (id == id_number)
         {
+            out.reserve(frame_length);
             for (int j = 0; j < frame_length; ++j)
-            {
-                result.push_back(d[i + j]);
-            }
-
-            RCLCPP_DEBUG(this->get_logger(), "Found full rab_data frame for id %d", id_number);
-            return result;
+                out.push_back(d[i + j]);
+            return out;
         }
     }
-
-    // 如果没找到，在 TF 中搜索一遍帮助调试
-    std::string want = "bot" + std::to_string(id_number) + "/base_link";
-    for (const auto &tf : rab_tf.transforms)
-    {
-        if (tf.child_frame_id == want)
-        {
-            RCLCPP_INFO(this->get_logger(),
-                        "TF found for id %d, but no rab_data present.", id_number);
-            result[0] = id_number;
-            for (size_t i = 1; i < frame_length; i++)
-            {
-                result[i] = -1;
-            }
-        }
-    }
-
-    return result; // 空 vector 表示未找到
+    return out;
 }
 
 void fissionFusion::refresh_target_transform()
 {
-    static int lost_count = 0; // 连续丢失计数器
+    static int lost_count = 0;
 
-    // 当前是否本来就无目标，不处理
     if (target_transform.header.frame_id == "none" ||
         target_transform.header.frame_id == "non-follower" ||
         target_transform.header.frame_id.empty())
     {
-        lost_count = 0; // 无目标时重置
+        lost_count = 0;
         return;
     }
 
-    bool found = false;
-
-    for (const auto &tf : rab_tf.transforms)
+    int __id = -1;
+    if (parse_ns_id_fast(target_transform.child_frame_id, __id))
     {
-        if (tf.child_frame_id == target_transform.child_frame_id)
+        auto it = tf_index_by_id.find(__id);
+        if (it != tf_index_by_id.end())
         {
-            target_transform = tf;
-            found = true;
+            target_transform = *tf_entries[it->second].tf;
             lost_count = 0; // 找到了，重置丢失计数
-            rab_tf.transforms.clear();
-            break;
+            return;
         }
     }
 
-    if (!found)
+    // 未找到：累积丢失
+    if (++lost_count >= 10)
     {
-        lost_count++;
-
-        if (lost_count >= 10)
-        {
-            target_transform.header.frame_id = "none";
-            lost_count = 0;
-            std::cout << "lost target! re-search" << std::endl;
-        }
-        // 否则：保留上一次的 target_transform，不变
+        target_transform.header.frame_id = "none";
+        lost_count = 0;
+        std::cout << "lost target! re-search" << std::endl;
     }
 }
 
 void fissionFusion::Pub_rab()
 {
-    // 发布range_and_bearing id/current_size/desired_size
-    std::regex re("\\d+");
-    std::smatch match;
-    double number_id = -1;
-    if (std::regex_search(current_namespace, match, re))
-    {
-        number_id = std::stoi(match.str());
-    }
-    else
+    int number_id = -1;
+    if (!parse_ns_id_fast(current_namespace, number_id))
     {
         std::cerr << "Failed to extract numeric ID from namespace: " << current_namespace << std::endl;
+        number_id = -1;
     }
 
     if (current_state == FISSION)
     {
-        if (groupsize_tolerance > 0)
-        {
-            fission_sign = 1.0;
-        }
-        else
-        {
-            fission_sign = 0.0;
-        }
+        fission_sign = (groupsize_tolerance > 0) ? 1.0 : 0.0;
     }
     else
     {
@@ -1710,7 +1621,6 @@ void fissionFusion::Pub_rab()
     rab_actuator.data.push_back(fission_sign);
 
     frame_length = rab_actuator.data.size();
-
     rab_actuator_publisher_->publish(rab_actuator);
 }
 
@@ -1718,7 +1628,7 @@ double fissionFusion::smoothed_estimate_with_window(double new_estimate)
 {
     // 静态变量用于跨调用保持历史状态
     static std::deque<double> history;
-    const size_t W = 1;       // 滑动窗口大小
+    const size_t W = 2;       // 滑动窗口大小
     const double decay = 0.9; // 时间衰减因子（0.8~0.95 建议）
 
     // 添加新估计值
@@ -1787,4 +1697,108 @@ void fissionFusion::safe_publish_trigger()
     {
         RCLCPP_ERROR(this->get_logger(), "Failed to publish /trigger_signal: %s", e.what());
     }
+}
+
+bool fissionFusion::parse_ns_id_fast(const std::string &ns, int &id)
+{
+    // 解析 "/bot123" 或 "bot123" → 123
+    size_t b = ns.find("bot");
+    if (b == std::string::npos)
+        return false;
+    size_t s = b + 3, e = s;
+    while (e < ns.size() && std::isdigit(static_cast<unsigned char>(ns[e])))
+        ++e;
+    if (e == s)
+        return false;
+    id = std::stoi(ns.substr(s, e - s));
+    return true;
+}
+
+void fissionFusion::build_frame_indices()
+{
+    // 0) 定义 rab 帧布局索引（根据你的实际数据改）
+    constexpr size_t RAB_IDX_ID = 0;      // id
+    constexpr size_t RAB_IDX_UNUSED1 = 1; // 占位/其他
+    constexpr size_t RAB_IDX_UNUSED2 = 2; // 占位/其他
+    constexpr size_t RAB_IDX_ON_GRAY = 3; // 1.0 表示 is_on_gray
+    constexpr size_t RAB_IDX_IS_FULL = 4; // 1.0 表示 is_full
+    constexpr size_t RAB_MIN_FIELDS = 5;  // 读到 is_full 至少需要 5 个槽位
+
+    // 1) rab_offset：建立 id -> 起始偏移
+    rab_offset.clear();
+    rab_stride = frame_length;
+
+    const auto &d = rab_data.data;
+    if (rab_stride >= 2 && d.size() >= static_cast<size_t>(rab_stride))
+    {
+        rab_offset.reserve(d.size() / rab_stride);
+        for (size_t i = 0; i + rab_stride <= d.size(); i += rab_stride)
+        {
+            int id = static_cast<int>(std::round(d[i + RAB_IDX_ID]));
+            rab_offset.emplace(id, i);
+        }
+    }
+
+    // 2) TF 条目 + 按 id 的索引
+    tf_entries.clear();
+    tf_entries.reserve(rab_tf.transforms.size());
+
+    tf_index_by_id.clear();
+    tf_index_by_id.reserve(rab_tf.transforms.size());
+
+    for (size_t idx = 0; idx < rab_tf.transforms.size(); ++idx)
+    {
+        const auto &tf = rab_tf.transforms[idx];
+
+        int id = -1;
+        parse_ns_id_fast(tf.child_frame_id, id);
+
+        bool fiss = false;    // is_on_gray
+        bool is_full = false; // 新字段
+
+        if (id != -1)
+        {
+            auto it = rab_offset.find(id);
+            if (it != rab_offset.end())
+            {
+                size_t off = it->second;
+                // 需要至少 RAB_MIN_FIELDS 个槽位才能同时读取 on_gray 和 is_full
+                if (off + RAB_MIN_FIELDS <= d.size())
+                {
+                    fiss = (d[off + RAB_IDX_ON_GRAY] == 1.0);
+                    is_full = (d[off + RAB_IDX_IS_FULL] == 1.0);
+                }
+                else if (off + (RAB_IDX_ON_GRAY + 1) <= d.size())
+                {
+                    // 兼容旧包：若数据还没携带 is_full，就只读 on_gray
+                    fiss = (d[off + RAB_IDX_ON_GRAY] == 1.0);
+                }
+            }
+        }
+
+        const double dx = tf.transform.translation.x;
+        const double dy = tf.transform.translation.y;
+        const double d2 = dx * dx + dy * dy;
+
+        // 注意聚合初始化的顺序要与 TfEntry 声明一致
+        tf_entries.push_back(TfEntry{&tf, id, fiss, dx, dy, d2, is_full});
+
+        if (id != -1)
+        {
+            // 同一 id 多条 TF 时，这里保留第一条；如需最近，可比较 d2 再覆盖
+            tf_index_by_id.emplace(id, idx);
+        }
+    }
+}
+
+const double *fissionFusion::get_rab_ptr(int id) const
+{
+    auto it = rab_offset.find(id);
+    if (it == rab_offset.end())
+        return nullptr;
+    const auto &d = rab_data.data;
+    size_t off = it->second;
+    if (off + rab_stride > d.size())
+        return nullptr;
+    return d.data() + off; // 长度为 rab_stride
 }

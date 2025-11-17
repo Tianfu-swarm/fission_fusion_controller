@@ -2,64 +2,41 @@
 
 double fissionFusion::exponential_random()
 {
-    // 1) 从 current_namespace 提取 self_id（如 /bot8）
-    static const std::regex kBotIdRe(R"((?:^|/)bot(\d+)(?:/|$))");
-    int self_id = -1;
-    {
-        std::smatch m;
-        if (std::regex_search(current_namespace, m, kBotIdRe))
-        {
-            try
-            {
-                self_id = std::stoi(m[1].str());
-            }
-            catch (...)
-            {
-                self_id = -1;
-            }
-        }
-    }
-
-    // 2) 为“当前对象 this”取得/创建专属 RNG（只播种一次）
     using clock = std::chrono::high_resolution_clock;
-    static std::mutex map_mtx;
-    static std::unordered_map<const fissionFusion *, std::mt19937> gens;
 
-    std::mt19937 *gen_ptr = nullptr;
+    // 线程本地 PRNG 与播种标记：无锁，首次调用时播种一次
+    static thread_local std::mt19937 gen;
+    static thread_local bool seeded = false;
+
+    if (!seeded)
     {
-        std::lock_guard<std::mutex> lk(map_mtx);
-        auto it = gens.find(this);
-        if (it == gens.end())
-        {
-            const uint64_t rt_ns = static_cast<uint64_t>(clock::now().time_since_epoch().count());
-            const uint64_t pid = static_cast<uint64_t>(::getpid());
-            const uint64_t ns_h = static_cast<uint64_t>(std::hash<std::string>{}(current_namespace));
-            const uint64_t id64 = (self_id >= 0) ? static_cast<uint64_t>(self_id) : 0ULL;
+        const uint64_t rt_ns = static_cast<uint64_t>(clock::now().time_since_epoch().count());
+        const uint64_t pid = static_cast<uint64_t>(::getpid());
 
-            std::seed_seq seed{
-                static_cast<uint32_t>(rt_ns),
-                static_cast<uint32_t>(rt_ns >> 32),
-                static_cast<uint32_t>(id64),
-                static_cast<uint32_t>(pid),
-                static_cast<uint32_t>(ns_h),
-                static_cast<uint32_t>(ns_h >> 32)};
-            it = gens.emplace(this, std::mt19937(seed)).first; // ← 首次调用时播种
-        }
-        gen_ptr = &it->second;
+        // 用对象地址与命名空间哈希增加熵；这里能直接访问 this / current_namespace
+        const uint64_t self = reinterpret_cast<uint64_t>(this);
+        const uint64_t nsh = static_cast<uint64_t>(std::hash<std::string>{}(current_namespace));
+
+        std::seed_seq seed{
+            static_cast<uint32_t>(rt_ns), static_cast<uint32_t>(rt_ns >> 32),
+            static_cast<uint32_t>(pid), static_cast<uint32_t>(pid >> 32),
+            static_cast<uint32_t>(self), static_cast<uint32_t>(self >> 32),
+            static_cast<uint32_t>(nsh), static_cast<uint32_t>(nsh >> 32)};
+        gen.seed(seed);
+        seeded = true;
     }
 
-    // 3) 取样（指数分布 λ=1）
     static thread_local std::exponential_distribution<double> dist(1.0);
-    return dist(*gen_ptr);
+    return dist(gen);
 }
 
 // Initialize the local random vector x with K values drawn from Exp(1)
 void fissionFusion::initialize_vector()
 {
-    x.clear();
+    x.resize(static_cast<size_t>(K));
     for (int i = 0; i < K; ++i)
     {
-        x.push_back(exponential_random());
+        x[static_cast<size_t>(i)] = exponential_random();
     }
 }
 
@@ -89,20 +66,26 @@ fissionFusion::ReceiveStatus fissionFusion::process_incoming_vectors()
 {
     ReceiveStatus status;
 
-    std::vector vec = radio_data.data;
-    radio_data.data.clear();
-    if (vec.empty() || vec.size() % (K + 1) != 0)
+    // 1) 零拷贝“拿走”消息内容：swap 而不是拷贝
+    std::vector<double> vec;
+    vec.swap(radio_data.data); // radio_data.data 清空，vec 拿到所有数据的所有权
+
+    const size_t stride = static_cast<size_t>(K + 1);
+    if (vec.empty() || (vec.size() % stride) != 0)
     {
         return status;
     }
 
-    int num_neighbors = vec.size() / (K + 1);
-    std::vector<double> original_x = x;
+    const int num_neighbors = static_cast<int>(vec.size() / stride);
+
+    // 2) 遍历邻居，就地做逐元素 min，并记录是否有变化（避免 original_x 复制）
+    bool any_recv_cur_round = false;
+    bool x_changed = false;
 
     for (int i = 0; i < num_neighbors; ++i)
     {
-        int base = i * (K + 1);
-        int received_round = static_cast<int>(vec[base]);
+        const size_t base = static_cast<size_t>(i) * stride;
+        const int received_round = static_cast<int>(vec[base]);
 
         if (received_round > current_round_id)
         {
@@ -113,59 +96,64 @@ fissionFusion::ReceiveStatus fissionFusion::process_incoming_vectors()
             }
             continue;
         }
-
         if (received_round != current_round_id)
             continue;
 
-        // 读取邻居的向量 [base + 1, base + 1 + K)
-        std::vector<double> x_neighbor(vec.begin() + base + 1, vec.begin() + base + 1 + K);
-        if (x_neighbor.size() != K)
+        // 逐邻居过滤（整条邻居向量若含非正/非有限值，丢弃）——
+        bool neighbor_ok = true;
+        for (int k = 0; k < K; ++k)
+        {
+            const double v = vec[base + 1 + static_cast<size_t>(k)];
+            if (!(std::isfinite(v) && v > 0.0))
+            {
+                neighbor_ok = false;
+                break;
+            }
+        }
+        if (!neighbor_ok)
             continue;
 
-        status.received_any_neighbor_in_current_round = true;
+        any_recv_cur_round = true;
 
-        pointwise_min(x, x_neighbor);
-    }
-
-    // 判断 x 是否发生变化
-    const double epsilon = 1e-8;
-    for (int i = 0; i < K; ++i)
-    {
-        if (std::abs(x[i] - original_x[i]) > epsilon)
+        // 与 [base+1 .. base+K] 做逐元素 min（无临时 vector，无分配）
+        for (int k = 0; k < K; ++k)
         {
-            status.x_updated = true;
-            // std::cout << "get different vector from neighbor" << std::endl;
-            break;
+            const double v = vec[base + 1 + static_cast<size_t>(k)];
+            if (v < x[static_cast<size_t>(k)])
+            {
+                x[static_cast<size_t>(k)] = v;
+                x_changed = true;
+            }
         }
     }
 
+    status.received_any_neighbor_in_current_round = any_recv_cur_round;
+    status.x_updated = x_changed;
     return status;
 }
 
 // Broadcast the local vector x to all neighbors
 void fissionFusion::broadcast_vector()
 {
-    std_msgs::msg::Float64MultiArray broadcast_vector;
-    broadcast_vector.data.clear();
+    std_msgs::msg::Float64MultiArray msg;
+    msg.data.clear();
+    msg.data.reserve(static_cast<size_t>(K) + 1);
 
-    broadcast_vector.data.push_back(static_cast<double>(current_round_id));
-
+    msg.data.push_back(static_cast<double>(current_round_id));
     for (size_t i = 0; i < x.size(); ++i)
     {
-        double val = x[i];
-
+        const double val = x[i];
         if (val <= 0.0)
         {
-            std::cerr << "[fissionFusion] WARNING: Received x[" << i << "] = "
-                      << val
-                      << " (<= 0) — possible data corruption!" << std::endl;
+            // 若要稳妥，也可以改为继续发送但夹取一个极小正数，避免直接 return
+            // 这里保持你的原语义
+            std::cerr << "[fissionFusion] WARNING: x[" << i << "]=" << val
+                      << " (<=0) — possible data corruption!\n";
             return;
         }
-
-        broadcast_vector.data.push_back(val);
+        msg.data.push_back(val);
     }
-
-    radio_actuator_publisher_->publish(broadcast_vector);
+    radio_actuator_publisher_->publish(msg);
 }
 
 // Main function to run one round of extrema propagation

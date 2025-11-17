@@ -35,20 +35,20 @@ export ROS_DOMAIN_ID=$domain_id
 echo "ROS_DOMAIN_ID set to: $ROS_DOMAIN_ID"
 
 timestamp_result=$(date +"%Y%m%d%H%M")
-results_path="../data/result_${timestamp_result}"
+results_path="../../data/result_${timestamp_result}"
 
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
 ros2 launch fission_fusion_controller run.launch.py numbers:=21.0 \
-                                                    desired_subgroup_size:=4.0 \
+                                                    desired_subgroup_size:=21.0 \
                                                     follow_range:=3.0 \
                                                     subgroup_size_sigma:=0.0 \
                                                     groupsize_tolerance:=0.0 \
-                                                    K:=1000 \
+                                                    K:=1500 \
                                                     early_converge_window:=10 \
                                                     isModelworks:=false \
-                                                    isMinCommunication:=false \
-                                                    isConCommunication:=false \
+                                                    isMinCommunication:=true \
+                                                    isConCommunication:=true \
                                                     use_rviz:=true \
                                                     use_sim_time:=true \
                                                     results_file_path:=${results_path}&
@@ -62,8 +62,11 @@ taskset -c $ARGOS_CORE \
 argos3 -c ../experiments/cps_map.argos &
 ARGOS_PID=$!
 
+# ros2 topic hz /bot0/pose &
+# HZ_PID=$!
+
 # Wait for 5 minutes (300 seconds) before stopping the current iteration
-sleep 600
+sleep 6000
 
 # Stop ARGoS3, ROS 2, rosbag, and RViz
 echo "Stopping ARGoS3, ROS 2, rosbag, and RViz for iteration $i"

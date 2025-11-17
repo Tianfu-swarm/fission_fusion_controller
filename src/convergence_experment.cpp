@@ -21,6 +21,23 @@ void fissionFusion::convergence_controller_step()
         // 计算 jitter
         jitter_time = rand_int * 0.01;
 
+        int id;
+        if (parse_ns_id_fast(current_namespace, id))
+        {
+            if (id >= 0 && id < 3)
+            {
+                desired_subgroup_size = 3;
+            }
+            else if (id >= 3 && id < 7)
+            {
+                desired_subgroup_size = 4;
+            }
+            else if (id >= 7 && id < 12)
+            {
+                desired_subgroup_size = 5;
+            }
+        }
+
         safe_publish_trigger();
 
         return;
@@ -28,6 +45,9 @@ void fissionFusion::convergence_controller_step()
 
     // pub rab
     Pub_rab();
+
+    // 建索引（每帧一次）
+    build_frame_indices();
 
     // estimate size
     double size;
@@ -96,9 +116,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
     {
     case RANDOM_WALK:
     {
-        std::pair<double, double> follow_result = sffm_estimate_posibility_range(desired_subgroup_size,
-                                                                                 arena_area,
-                                                                                 n_groupsize);
+        auto follow_result = sffm_estimate_posibility_range(desired_subgroup_size, arena_area, n_groupsize);
         double follow_posibility = follow_result.first;
         double follow_radius = follow_result.second;
 
@@ -115,31 +133,23 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
 
         sffm_choose_follow_target(follow_posibility, follow_radius);
 
-        if (target_transform.header.frame_id == "none") // not found target
-        {
+        if (target_transform.header.frame_id == "none")
             return RANDOM_WALK;
-        }
-        else if (target_transform.header.frame_id == "non-follower")
+        if (target_transform.header.frame_id == "non-follower")
         {
-            // non-follower
             initial_group_size = 1;
             stay_start_time = this->get_clock()->now();
             wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
             std::cout << "from random to stay" << std::endl;
             return STAY;
         }
-        else
-        {
-            std::cout << "from random to FUSION" << std::endl;
-            return FUSION;
-        }
 
-        break;
+        std::cout << "from random to FUSION" << std::endl;
+        return FUSION;
     }
 
     case FUSION:
     {
-        // 1. 检查目标是否丢失
         if (target_transform.header.frame_id == "none" ||
             target_transform.header.frame_id == "non-follower" ||
             target_transform.header.frame_id.empty())
@@ -147,45 +157,33 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
             return RANDOM_WALK;
         }
 
-        // 2. 计算目标距离
         double dx = target_transform.transform.translation.x;
         double dy = target_transform.transform.translation.y;
         double delta_distance = std::sqrt(dx * dx + dy * dy);
 
-        // 3. 到达目标 → STAY
         if (delta_distance < 0.5)
         {
             initial_group_size = 2;
             stay_start_time = this->get_clock()->now();
-            wait_time = rclcpp::Duration::from_seconds(
-                static_cast<double>(Waiting_time_scale_factor * initial_group_size));
-
+            wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
             target_transform.child_frame_id.clear();
             std::cout << "from FUSION to SATY" << std::endl;
-
             return STAY;
         }
 
-        if (isConCommunication) // 连续通信
+        if (isConCommunication)
         {
-            // 提取目标 ID
-            static const std::regex re(R"(bot(\d+)/)");
-            std::smatch m;
+            // 用 parse_ns_id_fast + rab_index
             target_id = -1;
-            if (std::regex_search(target_transform.child_frame_id, m, re) && m.size() >= 2)
-            {
-                target_id = std::stoi(m[1].str());
-            }
-            else
+            if (!parse_ns_id_fast(target_transform.child_frame_id, target_id))
             {
                 std::cout << "not get target id, return random walk" << std::endl;
-                return RANDOM_WALK; // 提取失败，无法做通信判断
+                return RANDOM_WALK;
             }
 
-            // 获取目标群体大小
-            double target_group_size;
-            auto rab = Extract_Rab_Data(target_id);
-            if (rab.size() > 1 && rab[1] != -1)
+            double target_group_size = -1;
+            const double *rab = get_rab_ptr(target_id);
+            if (rab && rab[1] != -1)
             {
                 target_group_size = rab[1];
             }
@@ -195,10 +193,9 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
                 return FUSION;
             }
 
-            // 通信策略：决定是继续融合、分裂还是放弃
             if (target_group_size < (desired_subgroup_size + groupsize_tolerance))
             {
-                return FUSION; // 群体未满，继续融合
+                return FUSION;
             }
             else
             {
@@ -211,68 +208,73 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         }
 
         return FUSION;
-        break;
     }
 
     case FISSION:
     {
+        // ✅ 改：使用 tf_entries 寻最近 & tf_index 更新
         if (fission_transform.child_frame_id.empty())
         {
             std::cout << "choose fission target" << std::endl;
-            if (rab_tf.transforms.empty())
+            if (tf_entries.empty())
             {
                 std::cout << "rab no message" << std::endl;
                 return FISSION;
             }
 
-            double min_distance = 1e6;
-            for (const auto &tf : rab_tf.transforms)
+            // 最近邻（按 d²）
+            double best_d2 = std::numeric_limits<double>::infinity();
+            const TfEntry *nearest = nullptr;
+            for (const auto &e : tf_entries)
             {
-                double x = tf.transform.translation.x;
-                double y = tf.transform.translation.y;
-                double distance = std::sqrt(x * x + y * y);
-                if (distance < min_distance)
+                if (e.tf->child_frame_id == e.tf->header.frame_id)
+                    continue; // 跳过自己
+                if (e.d2 < best_d2)
                 {
-                    min_distance = distance;
-                    fission_transform.child_frame_id = tf.child_frame_id;
+                    best_d2 = e.d2;
+                    nearest = &e;
                 }
             }
-            std::cout << "fission target distance is:" << min_distance << std::endl;
+            if (nearest)
+            {
+                fission_transform.child_frame_id = nearest->tf->child_frame_id;
+                std::cout << "fission target distance is: " << std::sqrt(best_d2) << std::endl;
+            }
+            else
+            {
+                return FISSION;
+            }
         }
 
         bool found = false;
-        if (!rab_tf.transforms.empty())
         {
-            for (const auto &tf : rab_tf.transforms)
+            int __fid = -1;
+            if (parse_ns_id_fast(fission_transform.child_frame_id, __fid))
             {
-                if (tf.child_frame_id == fission_transform.child_frame_id)
+                auto it = tf_index_by_id.find(__fid);
+                if (it != tf_index_by_id.end())
                 {
-                    fission_transform = tf;
+                    fission_transform = *tf_entries[it->second].tf;
                     found = true;
-                    break;
                 }
-            }
-
-            if (!found)
-            {
-                static int lost_target_time;
-                lost_target_time++;
-                if (lost_target_time < 5)
-                {
-                    return FISSION;
-                }
-                lost_target_time = 0;
-                std::cout << "lost fission target, return random " << fission_transform.child_frame_id << std::endl;
-                fission_transform.header.frame_id.clear();
-                return RANDOM_WALK;
             }
         }
 
-        double x = fission_transform.transform.translation.x;
-        double y = fission_transform.transform.translation.y;
-        double distance = std::sqrt(x * x + y * y);
-        // std::cout << "distance to fission target " << fission_transform.child_frame_id
-        //           << " is " << distance << std::endl;
+        if (!found)
+        {
+            static int lost_target_time = 0;
+            if (++lost_target_time < 5)
+                return FISSION;
+            lost_target_time = 0;
+            std::cout << "lost fission target, return random " << fission_transform.child_frame_id << std::endl;
+            fission_transform.header.frame_id.clear();
+            return RANDOM_WALK;
+        }
+
+        const double x = fission_transform.transform.translation.x;
+        const double y = fission_transform.transform.translation.y;
+        const double distance = std::sqrt(x * x + y * y);
+
         if (distance > 5)
         {
             std::cout << "from fission to random walk, far to target: " << distance << std::endl;
@@ -287,7 +289,6 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
 
     case STAY:
     {
-
         double actual_group_size = std::round(estimated_group_size);
         if (this->get_clock()->now() - Maintain_state_start_time < rclcpp::Duration::from_seconds(2.0))
         {
@@ -297,37 +298,32 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
 
         if (actual_group_size < desired_subgroup_size + groupsize_tolerance)
         {
-            // 检查组大小变化并更新等待时间
             if (actual_group_size != initial_group_size)
-            { // 如果 group size 大了，更新等待时间
+            {
                 if (actual_group_size > initial_group_size)
                 {
-                    // std::cout << "size larger,from " << initial_group_size << " to " << actual_group_size << std::endl;
-                    initial_group_size = actual_group_size; // 更新 group size 记录
+                    initial_group_size = actual_group_size;
                     wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
-                    stay_start_time = this->get_clock()->now(); // 重置等待
+                    stay_start_time = this->get_clock()->now();
                 }
-                // 如果 group size小了，比较剩余时间与新时间，取小
-                if (actual_group_size < initial_group_size)
+                else
                 {
                     rclcpp::Time now = this->get_clock()->now();
-                    rclcpp::Duration elapsed_time = now - stay_start_time;
-                    rclcpp::Duration remaining_time = wait_time - elapsed_time;
+                    rclcpp::Duration elapsed = now - stay_start_time;
+                    rclcpp::Duration remaining = wait_time - elapsed;
 
-                    rclcpp::Duration new_wait_time = rclcpp::Duration::from_seconds(
+                    rclcpp::Duration new_wait = rclcpp::Duration::from_seconds(
                         static_cast<double>(Waiting_time_scale_factor * actual_group_size));
 
-                    if (new_wait_time < remaining_time)
+                    if (new_wait < remaining)
                     {
-                        wait_time = new_wait_time;
-                        stay_start_time = now; // 重置起始时间
+                        wait_time = new_wait;
+                        stay_start_time = now;
                     }
-
                     initial_group_size = actual_group_size;
                 }
             }
 
-            // 检查当前时间是否超过 wait_time
             rclcpp::Time time_now = this->get_clock()->now();
             if ((time_now - stay_start_time).seconds() > wait_time.seconds())
             {
@@ -337,7 +333,6 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
                           << ", wait time = " << wait_time.seconds()
                           << " initial_group_size:" << initial_group_size
                           << std::endl;
-
                 fission_transform.child_frame_id.clear();
                 return FISSION;
             }
@@ -349,10 +344,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         }
         else if (actual_group_size > desired_subgroup_size + groupsize_tolerance)
         {
-            std::pair<double, double> follow_result = sffm_estimate_posibility_range(desired_subgroup_size,
-                                                                                     arena_area,
-                                                                                     actual_group_size);
-
+            auto follow_result = sffm_estimate_posibility_range(desired_subgroup_size, arena_area, actual_group_size);
             double follow_posibility = 1 - ((actual_group_size - desired_subgroup_size) / actual_group_size);
             double follow_radius = 2;
 

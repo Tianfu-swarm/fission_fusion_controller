@@ -10,8 +10,8 @@ pd_parameters:
   Kd_distance: 0.05              # Derivative gain for distance
   Kp_angle: 3                # Proportional gain for angle
   Kd_angle: 0.08                 # Derivative gain for angle
-  max_velocity: 5              # Maximum linear velocity
-  max_omega: 3                 # Maximum angular velocity
+  max_velocity: 1              # Maximum linear velocity
+  max_omega: 1                 # Maximum angular velocity
 
 # Follow Neighbour Parameters
 follow_neighbour:
