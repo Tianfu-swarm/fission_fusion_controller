@@ -53,7 +53,7 @@ void fissionFusion::pointwise_min(std::vector<double> &a, const std::vector<doub
 // N_hat = (K - 1) / sum(x)
 double fissionFusion::estimate_group_size_extrema()
 {
-    double sum = 0.0f;
+    double sum = 0.0;
     for (double val : x)
     {
         sum += val;
@@ -159,7 +159,7 @@ void fissionFusion::broadcast_vector()
 // Main function to run one round of extrema propagation
 double fissionFusion::extrema_propagation()
 {
-    const double epsilon = 1e-6;
+    const double epsilon = 1e-3;
 
     if (x.empty())
     {
@@ -214,6 +214,8 @@ double fissionFusion::extrema_propagation()
         return N;
     }
 
+    const int no_msg_threshold = 3;
+
     // 更新传播 hop 状态
     if (status.received_any_neighbor_in_current_round)
     {
@@ -221,6 +223,18 @@ double fissionFusion::extrema_propagation()
             propagation_hops = 0;
         else
             propagation_hops++; // 向量没有变化的次数
+    }
+    else
+    {
+        // 没收到邻居消息
+        no_message_steps++;
+
+        if (no_message_steps >= no_msg_threshold)
+        {
+            // 连续多步无消息 → 认为网络稳定一次
+            propagation_hops++;
+            no_message_steps = 0; // 重置无消息计数
+        }
     }
 
     // 判断稳定性
@@ -245,8 +259,27 @@ double fissionFusion::extrema_propagation()
         current_round_id++;
 
         x.clear();
-        return N; // 只在真正收敛时返回新估计
+        return N;
     }
 
     return -1; //- 1; // 否则返回无效估计，继续等待下一步推进
+}
+
+double fissionFusion::smoothed_estimate_with_window(double new_estimate, double window_size, double size_decay)
+{
+    size_t W = window_size;
+    double decay = size_decay;
+
+    if (smooth_history.size() >= W)
+        smooth_history.pop_front();
+    smooth_history.push_back(new_estimate);
+
+    double weighted_sum = 0.0, weight_total = 0.0;
+    for (size_t i = 0; i < smooth_history.size(); ++i)
+    {
+        double weight = std::pow(decay, smooth_history.size() - i - 1);
+        weighted_sum += weight * smooth_history[i];
+        weight_total += weight;
+    }
+    return weighted_sum / weight_total;
 }

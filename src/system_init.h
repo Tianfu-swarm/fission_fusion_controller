@@ -450,7 +450,8 @@ private:
     rclcpp::Duration Maintain_state_time = rclcpp::Duration::from_seconds(10.0);
     rclcpp::Time Maintain_state_start_time = this->get_clock()->now() - Maintain_state_time;
 
-    double Waiting_time_scale_factor = 5;
+    double Waiting_time_scale_factor = 8;
+    double split_posibility_scale_factor = 1;
 
     rclcpp::Time pd_control_last_time = this->get_clock()->now();
 
@@ -464,7 +465,9 @@ private:
      * extrema_propagation
      **************************************************************************/
     double extrema_propagation();
-    double smoothed_estimate_with_window(double new_estimate);
+    double smoothed_estimate_with_window(double new_estimate, double window_size, double size_decay);
+    std::deque<double> smooth_history;
+    int no_message_steps = 0;
     void initialize_vector();
     void pointwise_min(std::vector<double> &a, const std::vector<double> &b);
     double estimate_group_size_extrema();

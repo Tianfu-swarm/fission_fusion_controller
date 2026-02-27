@@ -52,7 +52,7 @@ void fissionFusion::sffm_controler_step()
         }
     }
 
-    estimated_group_size = smoothed_estimate_with_window(estimated_group_size);
+    // estimated_group_size = smoothed_estimate_with_window(estimated_group_size);
 
     // double ground_truth = sffm_detect_group_size("/bot0");
     double actual_group_size = std::round(estimated_group_size);
@@ -1622,31 +1622,6 @@ void fissionFusion::Pub_rab()
 
     frame_length = rab_actuator.data.size();
     rab_actuator_publisher_->publish(rab_actuator);
-}
-
-double fissionFusion::smoothed_estimate_with_window(double new_estimate)
-{
-    // 静态变量用于跨调用保持历史状态
-    static std::deque<double> history;
-    const size_t W = 2;       // 滑动窗口大小
-    const double decay = 0.9; // 时间衰减因子（0.8~0.95 建议）
-
-    // 添加新估计值
-    if (history.size() >= W)
-        history.pop_front(); // 移除最旧
-    history.push_back(new_estimate);
-
-    // 计算加权平均
-    double weighted_sum = 0.0, weight_total = 0.0;
-    for (size_t i = 0; i < history.size(); ++i)
-    {
-        // 越新的估计越大权重（最后一个是最大）
-        double weight = std::pow(decay, history.size() - i - 1);
-        weighted_sum += weight * history[i];
-        weight_total += weight;
-    }
-
-    return weighted_sum / weight_total;
 }
 
 void fissionFusion::safe_publish_trigger()

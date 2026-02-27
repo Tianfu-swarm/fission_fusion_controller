@@ -3,7 +3,7 @@
 #$ -cwd
 #$ -o "logs/output.$JOB_ID.$TASK_ID.log"
 #$ -e "logs/error.$JOB_ID.$TASK_ID.log"
-#$ -t 1-100
+#$ -t 1-1
 #$ -tc 50   
 #$ -j y
 #$ -pe smp 16
@@ -27,10 +27,10 @@ BASE_DIR=$PWD
 LOCAL_RESULT_DIR=/data/scc/$USER/result
 FINAL_RESULT_DIR=$BASE_DIR/result
 SCRIPT_PATH=$BASE_DIR/benchmark_v2.sh
-CONTAINER_NAME=benchmark_v2.sif
+CONTAINER_NAME=benchmark_v3.sif
 SIF_PATH=$BASE_DIR/$CONTAINER_NAME
 SHARED_LOCAL_SIF=/data/scc/$USER/$CONTAINER_NAME
-LOCAL_SIF=/tmp/benchmark_${TASK_ID}.sif
+LOCAL_SIF=/tmp/benchmark_v3_${TASK_ID}.sif
 
 # 创建目录
 mkdir -p $LOCAL_RESULT_DIR
@@ -49,13 +49,13 @@ cp $SHARED_LOCAL_SIF $LOCAL_SIF
 # 循环执行多个子子任务
 for ((i=1; i<=SUBTASKS_PER_TASK; i++)); do
   RESULT_ID=${TASK_ID}-${i}
-  LOCAL_RESULT_FILE=$LOCAL_RESULT_DIR/task_${RESULT_ID}.csv
-  FINAL_RESULT_FILE=$FINAL_RESULT_DIR/task_${RESULT_ID}.csv
+  LOCAL_RESULT_FILE=$LOCAL_RESULT_DIR/task_${RESULT_ID}
+  FINAL_RESULT_FILE=$FINAL_RESULT_DIR/task_${RESULT_ID}
 
   # 跳过已完成任务
-  if [ -f "$FINAL_RESULT_FILE" ]; then
-    echo "[$(date)] Subtask $RESULT_ID already done. Skipping."
-    continue
+  if [ -d "$LOCAL_RESULT_FILE" ]; then
+    echo "[$(date)] Found old result for Subtask $RESULT_ID — removing it."
+    rm -rf "$LOCAL_RESULT_FILE"
   fi
 
   echo "[$(date)] Launching subtask $RESULT_ID → $LOCAL_RESULT_FILE"
@@ -69,14 +69,15 @@ for ((i=1; i<=SUBTASKS_PER_TASK; i++)); do
     --bind $SCRIPT_PATH:/script.sh \
     --bind $LOCAL_RESULT_DIR:/results \
     $LOCAL_SIF \
-    bash /script.sh /results/task_${RESULT_ID}.csv
+    bash /script.sh /results/task_${RESULT_ID}
 
 
   echo "[$(date)] Subtask $RESULT_ID completed."
 
-  if [ -f "$LOCAL_RESULT_FILE" ]; then
-    rsync -av "$LOCAL_RESULT_FILE" "$FINAL_RESULT_FILE"
-    rm -f "$LOCAL_RESULT_FILE"
+  if [ -d "$FINAL_RESULT_FILE" ]; then
+    mkdir -p "$FINAL_RESULT_FILE"
+    rsync -av "$LOCAL_RESULT_FILE/" "$FINAL_RESULT_FILE/"
+    rm -rf "$LOCAL_RESULT_FILE"
   else
     echo "[$(date)] WARNING: No result file found for Subtask $RESULT_ID"
   fi

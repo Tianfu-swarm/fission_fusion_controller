@@ -37,19 +37,20 @@ echo "ROS_DOMAIN_ID set to: $ROS_DOMAIN_ID"
 
 timestamp_result=$(date +"%Y%m%d%H%M")
 results_path="../../data/result_${timestamp_result}"
-results_path="/media/tianfu/ HIKSEMI/data/result_${timestamp_result}"
-results_path="/home/tianfu/Music/data/result_${timestamp_result}"
+# results_path="/media/tianfu/ HIKSEMI/data/result_${timestamp_result}"
+results_path="/home/tianfu/pyproject/data/result_${timestamp_result}"
+# results_path="/home/tianfu/Music/data/result_${timestamp_result}"
 # results_path="/home/tianfu/fission_fusion_controller_ws/src/data/result_${timestamp_result}"
 
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
-ros2 launch fission_fusion_controller run.launch.py numbers:=9.0 \
+ros2 launch fission_fusion_controller run.launch.py numbers:=10.0 \
                                                     desired_subgroup_size:=14.0 \
                                                     follow_range:=5.0 \
                                                     subgroup_size_sigma:=0.0 \
                                                     groupsize_tolerance:=0.0 \
-                                                    K:=800 \
-                                                    early_converge_window:=9 \
+                                                    K:=1000 \
+                                                    early_converge_window:=20 \
                                                     isModelworks:=false \
                                                     isMinCommunication:=true \
                                                     isConCommunication:=true \
@@ -63,14 +64,14 @@ sleep 1 # Increase sleep time if necessary
 
 # Run ARGoS3 with the specified configuration file
 taskset -c $ARGOS_CORE \
-argos3 -c ../experiments/convergence.argos & 
+argos3 -c ../experiments/counting_experiments.argos & 
 ARGOS_PID=$!
 
 # ros2 topic hz /bot0/pose &
 # HZ_PID=$!
 
 # Wait for 5 minutes (300 seconds) before stopping the current iteration
-sleep 150
+sleep 60
 
 # Stop ARGoS3, ROS 2, rosbag, and RViz
 echo "Stopping ARGoS3, ROS 2, rosbag, and RViz for iteration $i"

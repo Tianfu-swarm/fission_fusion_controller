@@ -62,7 +62,7 @@ void fissionFusion::cps_task_step()
         }
     }
 
-    estimated_group_size = smoothed_estimate_with_window(estimated_group_size);
+    estimated_group_size = smoothed_estimate_with_window(estimated_group_size, 3, 0.95);
 
     double actual_group_size = std::round(estimated_group_size);
     write_buffer << current_namespace << ","

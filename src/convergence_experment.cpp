@@ -21,22 +21,22 @@ void fissionFusion::convergence_controller_step()
         // 计算 jitter
         jitter_time = rand_int * 0.01;
 
-        int id;
-        if (parse_ns_id_fast(current_namespace, id))
-        {
-            if (id >= 0 && id < 3)
-            {
-                desired_subgroup_size = 3;
-            }
-            else if (id >= 3 && id < 7)
-            {
-                desired_subgroup_size = 4;
-            }
-            else if (id >= 7 && id < 12)
-            {
-                desired_subgroup_size = 5;
-            }
-        }
+        // int id;
+        // if (parse_ns_id_fast(current_namespace, id))
+        // {
+        //     if (id >= 0 && id < 2)
+        //     {
+        //         desired_subgroup_size = 2;
+        //     }
+        //     else if (id >= 2 && id < 5)
+        //     {
+        //         desired_subgroup_size = 3;
+        //     }
+        //     else if (id >= 5 && id < 9)
+        //     {
+        //         desired_subgroup_size = 4;
+        //     }
+        // }
 
         safe_publish_trigger();
 
@@ -58,13 +58,18 @@ void fissionFusion::convergence_controller_step()
     else
     {
         size = extrema_propagation();
-        if (size > 0 && estimated_group_size != size) // 只有估计了一个新值时才添加
+        // if (size > 0 && current_namespace == "/bot0")
+        // {
+        //     std::cout << "size = " << size << " [" << this->get_clock()->now().seconds() << "]" << std::endl;
+        // }
+        if (size > 0) // 只有估计了一个新值时才添加 && estimated_group_size != size
         {
             estimated_group_size = size;
+            estimated_group_size = smoothed_estimate_with_window(estimated_group_size, 2, 0.9);
         }
     }
 
-    estimated_group_size = smoothed_estimate_with_window(estimated_group_size);
+    // estimated_group_size = smoothed_estimate_with_window(estimated_group_size);
 
     double actual_group_size = std::round(estimated_group_size);
     write_buffer << current_namespace << ","
@@ -74,7 +79,9 @@ void fissionFusion::convergence_controller_step()
                  << stability_window << ","
                  << current_pose.pose.position.x << ","
                  << current_pose.pose.position.y << ","
-                 << K << "\n";
+                 << K << ","
+                 << current_round_id << ","
+                 << propagation_hops << "\n";
 
     // 每 5 秒写入一次文件
     rclcpp::Time now = this->get_clock()->now();
@@ -183,13 +190,23 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
 
             double target_group_size = -1;
             const double *rab = get_rab_ptr(target_id);
-            if (rab && rab[1] != -1)
+            // 检查指针是否为空
+            if (!rab)
+            {
+                // 如果找不到数据包，说明被遮挡了，直接安全返回
+                // std::cout << "Target robot " << target_id << " is occluded (RAB missing)." << std::endl;
+                return FUSION;
+            }
+
+            // 指针不为空，再检查数据内容是否有效
+            if (rab[1] != -1)
             {
                 target_group_size = rab[1];
             }
             else
             {
-                std::cout << "extra target group size failed, keep fusion" << std::endl;
+                // 此时 rab 肯定不是空，访问 rab[1] 是安全的
+                std::cout << "extra target group size failed, rab[1]=" << rab[1] << ", keep fusion" << std::endl;
                 return FUSION;
             }
 
@@ -212,7 +229,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
 
     case FISSION:
     {
-        // ✅ 改：使用 tf_entries 寻最近 & tf_index 更新
+        // 改：使用 tf_entries 寻最近 & tf_index 更新
         if (fission_transform.child_frame_id.empty())
         {
             std::cout << "choose fission target" << std::endl;
@@ -275,7 +292,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         const double y = fission_transform.transform.translation.y;
         const double distance = std::sqrt(x * x + y * y);
 
-        if (distance > 5)
+        if (distance > 3)
         {
             std::cout << "from fission to random walk, far to target: " << distance << std::endl;
             fission_transform.child_frame_id.clear();
@@ -302,6 +319,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
             {
                 if (actual_group_size > initial_group_size)
                 {
+                    std::cout << "actuall size is changed: " << actual_group_size << std::endl;
                     initial_group_size = actual_group_size;
                     wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
                     stay_start_time = this->get_clock()->now();
@@ -318,7 +336,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
                     if (new_wait < remaining)
                     {
                         wait_time = new_wait;
-                        stay_start_time = now;
+                        stay_start_time = this->get_clock()->now();
                     }
                     initial_group_size = actual_group_size;
                 }
@@ -345,7 +363,8 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         else if (actual_group_size > desired_subgroup_size + groupsize_tolerance)
         {
             auto follow_result = sffm_estimate_posibility_range(desired_subgroup_size, arena_area, actual_group_size);
-            double follow_posibility = 1 - ((actual_group_size - desired_subgroup_size) / actual_group_size);
+            double split_posibility = split_posibility_scale_factor * ((actual_group_size - desired_subgroup_size) / actual_group_size);
+            double follow_posibility = 1 - split_posibility;
             double follow_radius = 2;
 
             sffm_choose_follow_target(follow_posibility, follow_radius);
@@ -389,7 +408,7 @@ void fissionFusion::execute_state_behavior_convergence(robot_state state)
             /*mean_ω=*/0.0, /*std_ω=*/0.5);
         geometry_msgs::msg::Twist twist_msg;
 
-        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning();
+        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning(1.5);
 
         if (local_planning_target.child_frame_id == "avoid_target")
         {
@@ -464,7 +483,7 @@ void fissionFusion::execute_state_behavior_convergence(robot_state state)
             /*mean_ω=*/0.0, /*std_ω=*/0.5);
         geometry_msgs::msg::Twist twist_msg;
 
-        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning();
+        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning(1.5);
 
         if (local_planning_target.child_frame_id == "avoid_target")
         {
@@ -513,6 +532,15 @@ void fissionFusion::execute_state_behavior_convergence(robot_state state)
         twist_msg.angular.x = 0.0;
         twist_msg.angular.y = 0.0;
         twist_msg.angular.z = control_command.second;
+
+        // geometry_msgs::msg::Twist twist_msg;
+        // twist_msg.linear.x = 0.0;
+        // twist_msg.linear.y = 0.0;
+        // twist_msg.linear.z = 0.0;
+
+        // twist_msg.angular.x = 0.0;
+        // twist_msg.angular.y = 0.0;
+        // twist_msg.angular.z = 0.0;
 
         if (isAbstacle == false)
         {

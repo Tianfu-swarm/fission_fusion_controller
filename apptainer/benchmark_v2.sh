@@ -98,6 +98,9 @@ echo "[READY] ARGoS initialized"
 echo "Running simulation for 120 seconds"
 sleep 120
 
+echo "[INFO] Waiting extra 10 seconds for ROS to flush data..."
+sleep 10
+
 # 清理
 echo "Stopping processes"
 cleanup
