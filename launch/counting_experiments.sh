@@ -44,13 +44,13 @@ results_path="/home/tianfu/pyproject/data/result_${timestamp_result}"
 
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
-ros2 launch fission_fusion_controller run.launch.py numbers:=10.0 \
+ros2 launch fission_fusion_controller run.launch.py numbers:=8.0 \
                                                     desired_subgroup_size:=14.0 \
                                                     follow_range:=5.0 \
                                                     subgroup_size_sigma:=0.0 \
                                                     groupsize_tolerance:=0.0 \
                                                     K:=1000 \
-                                                    early_converge_window:=20 \
+                                                    early_converge_window:=24 \
                                                     isModelworks:=false \
                                                     isMinCommunication:=true \
                                                     isConCommunication:=true \
@@ -71,7 +71,7 @@ ARGOS_PID=$!
 # HZ_PID=$!
 
 # Wait for 5 minutes (300 seconds) before stopping the current iteration
-sleep 60
+sleep 3
 
 # Stop ARGoS3, ROS 2, rosbag, and RViz
 echo "Stopping ARGoS3, ROS 2, rosbag, and RViz for iteration $i"

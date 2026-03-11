@@ -10,38 +10,40 @@ void fissionFusion::convergence_controller_step()
     // std::cout.rdbuf(old_buf);
 
     // boot time
-    if ((this->get_clock()->now() - boot_time) < boot_wait_time)
-    {
-        current_state = RANDOM_WALK;
-        // execute_state_behavior(current_state);
-        srand(static_cast<unsigned int>(this->get_clock()->now().nanoseconds())); // 初始化随机种子
+    // if ((this->get_clock()->now() - boot_time) < boot_wait_time)
+    // {
+    //     current_state = RANDOM_WALK;
+    //     // execute_state_behavior(current_state);
+    //     srand(static_cast<unsigned int>(this->get_clock()->now().nanoseconds())); // 初始化随机种子
 
-        int rand_int = rand() % 100;
+    //     int rand_int = rand() % 100;
 
-        // 计算 jitter
-        jitter_time = rand_int * 0.01;
+    //     // 计算 jitter
+    //     jitter_time = rand_int * 0.01;
 
-        // int id;
-        // if (parse_ns_id_fast(current_namespace, id))
-        // {
-        //     if (id >= 0 && id < 2)
-        //     {
-        //         desired_subgroup_size = 2;
-        //     }
-        //     else if (id >= 2 && id < 5)
-        //     {
-        //         desired_subgroup_size = 3;
-        //     }
-        //     else if (id >= 5 && id < 9)
-        //     {
-        //         desired_subgroup_size = 4;
-        //     }
-        // }
+    //     // int id;
+    //     // if (parse_ns_id_fast(current_namespace, id))
+    //     // {
+    //     //     if (id >= 0 && id < 2)
+    //     //     {
+    //     //         desired_subgroup_size = 2;
+    //     //     }
+    //     //     else if (id >= 2 && id < 5)
+    //     //     {
+    //     //         desired_subgroup_size = 3;
+    //     //     }
+    //     //     else if (id >= 5 && id < 9)
+    //     //     {
+    //     //         desired_subgroup_size = 4;
+    //     //     }
+    //     // }
 
-        safe_publish_trigger();
+    //     safe_publish_trigger();
 
-        return;
-    }
+    //     return;
+    // }
+
+    current_state = STAY;
 
     // pub rab
     Pub_rab();
@@ -110,9 +112,9 @@ void fissionFusion::convergence_controller_step()
         }
     }
 
-    current_state = update_state_convergence(current_state);
+    // current_state = update_state_convergence(current_state);
 
-    execute_state_behavior_convergence(current_state);
+    // execute_state_behavior_convergence(current_state);
 
     safe_publish_trigger();
 }
