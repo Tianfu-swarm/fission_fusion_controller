@@ -1,1 +1,3 @@
 data/
+docker/*.tar.gz
+docker/*.tar
