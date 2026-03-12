@@ -3,47 +3,31 @@
 
 void fissionFusion::convergence_controller_step()
 {
-    // std::ofstream null_stream("/dev/null");      // Linux/Unix
-    // std::streambuf *old_buf = std::cout.rdbuf(); // 保存原来的缓冲区
-    // std::cout.rdbuf(null_stream.rdbuf());        // 重定向到空
-    // 恢复
-    // std::cout.rdbuf(old_buf);
-
     // boot time
-    // if ((this->get_clock()->now() - boot_time) < boot_wait_time)
-    // {
-    //     current_state = RANDOM_WALK;
-    //     // execute_state_behavior(current_state);
-    //     srand(static_cast<unsigned int>(this->get_clock()->now().nanoseconds())); // 初始化随机种子
+    if ((this->get_clock()->now() - boot_time) < boot_wait_time)
+    {
+        current_state = RANDOM_WALK;
+        srand(static_cast<unsigned int>(this->get_clock()->now().nanoseconds())); // 初始化随机种子
 
-    //     int rand_int = rand() % 100;
+        int rand_int = rand() % 100;
 
-    //     // 计算 jitter
-    //     jitter_time = rand_int * 0.01;
+        // 计算 jitter
+        jitter_time = rand_int * 0.01;
 
-    //     // int id;
-    //     // if (parse_ns_id_fast(current_namespace, id))
-    //     // {
-    //     //     if (id >= 0 && id < 2)
-    //     //     {
-    //     //         desired_subgroup_size = 2;
-    //     //     }
-    //     //     else if (id >= 2 && id < 5)
-    //     //     {
-    //     //         desired_subgroup_size = 3;
-    //     //     }
-    //     //     else if (id >= 5 && id < 9)
-    //     //     {
-    //     //         desired_subgroup_size = 4;
-    //     //     }
-    //     // }
+        // int id;
+        // if (parse_ns_id_fast(current_namespace, id))
+        // {
+        //     if (id >= 0 && id < 2)
+        //     {
+        //         desired_subgroup_size = 2;
+        //     }
+        // }
 
-    //     safe_publish_trigger();
+        safe_publish_trigger();
 
-    //     return;
-    // }
+        return;
+    }
 
-    current_state = STAY;
 
     // pub rab
     Pub_rab();
@@ -60,18 +44,13 @@ void fissionFusion::convergence_controller_step()
     else
     {
         size = extrema_propagation();
-        // if (size > 0 && current_namespace == "/bot0")
-        // {
-        //     std::cout << "size = " << size << " [" << this->get_clock()->now().seconds() << "]" << std::endl;
-        // }
+  
         if (size > 0) // 只有估计了一个新值时才添加 && estimated_group_size != size
         {
             estimated_group_size = size;
             estimated_group_size = smoothed_estimate_with_window(estimated_group_size, 2, 0.9);
         }
     }
-
-    // estimated_group_size = smoothed_estimate_with_window(estimated_group_size);
 
     double actual_group_size = std::round(estimated_group_size);
     write_buffer << current_namespace << ","
@@ -112,9 +91,9 @@ void fissionFusion::convergence_controller_step()
         }
     }
 
-    // current_state = update_state_convergence(current_state);
+    current_state = update_state_convergence(current_state);
 
-    // execute_state_behavior_convergence(current_state);
+    execute_state_behavior_convergence(current_state);
 
     safe_publish_trigger();
 }

@@ -1,0 +1,28 @@
+services:
+  dev:
+    build:
+      context: ..                
+      dockerfile: docker/Dockerfile
+    image: fission_fusion:humble
+    container_name: fission_fusion_dev
+
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, graphics]
+
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ..:/ros2_ws/src/fission_fusion_controller  
+
+    network_mode: host
+    stdin_open: true
+    tty: true

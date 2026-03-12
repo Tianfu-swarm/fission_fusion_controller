@@ -2,7 +2,7 @@
 ros2 daemon stop
 ros2 daemon start
 
-sudo find /dev/shm -maxdepth 1 -type f \
+find /dev/shm -maxdepth 1 -type f \
   \( -name 'fastrtps_*' -o -name 'sem.fastrtps_*' \) \
   -delete
 # Define a function to clean up processes when the script is terminated
@@ -18,10 +18,13 @@ cleanup() {
 # Trap SIGINT (Ctrl+C) and call cleanup function
 trap cleanup SIGINT
 
-source ~/fission_fusion_controller_ws/install/setup.bash
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+WS_DIR=$(cd "$SCRIPT_DIR/../../.." && pwd)
+source $WS_DIR/install/setup.bash
 # Export necessary environment variables
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/argos3:../../../install/argos3_ros_bridge/lib
-export ARGOS_PLUGIN_PATH=../../../install/argos3_ros_bridge/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/argos3:$WS_DIR/install/argos3_ros_bridge/lib
+export ARGOS_PLUGIN_PATH=$WS_DIR/install/argos3_ros_bridge/lib
+export LD_PRELOAD=$(find /usr/local/lib/argos3 -name "*.so" | tr '\n' ':')
 
 ROS2_CORES="0-9"     # 分配核 0 到 7 给 ROS 2 节点
 ARGOS_CORE="10-13"       # 分配核 8 给 ARGoS3
@@ -36,11 +39,7 @@ export ROS_DOMAIN_ID=$domain_id
 echo "ROS_DOMAIN_ID set to: $ROS_DOMAIN_ID"
 
 timestamp_result=$(date +"%Y%m%d%H%M")
-results_path="../../data/result_${timestamp_result}"
-# results_path="/media/tianfu/ HIKSEMI/data/result_${timestamp_result}"
-results_path="/home/tianfu/pyproject/data/result_${timestamp_result}"
-# results_path="/home/tianfu/Music/data/result_${timestamp_result}"
-# results_path="/home/tianfu/fission_fusion_controller_ws/src/data/result_${timestamp_result}"
+results_path="$WS_DIR/src/fission_fusion_controller/data/result_${timestamp_result}"
 
 # Run the ROS 2 launch command in the background
 taskset -c $ROS2_CORES \
@@ -63,8 +62,13 @@ ROS2_PID=$! # Save the process ID (PID) of ros2 launch
 sleep 1 # Increase sleep time if necessary
 
 # Run ARGoS3 with the specified configuration file
+EXPERIMENTS_DIR=$SCRIPT_DIR/../experiments
+TMP_ARGOS=$(mktemp /tmp/argos_XXXXXX.argos)
+sed "s|EXPERIMENTS_DIR|$EXPERIMENTS_DIR|g" \
+    $EXPERIMENTS_DIR/convergence_obstacles.argos > $TMP_ARGOS
+
 taskset -c $ARGOS_CORE \
-argos3 -c ../experiments/convergence_obstacles.argos & 
+argos3 -c $TMP_ARGOS &
 ARGOS_PID=$!
 
 # ros2 topic hz /bot0/pose &

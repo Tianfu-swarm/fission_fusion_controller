@@ -51,7 +51,7 @@
   <!-- *********************** -->
 <arena size="10,10,1" center="0,0,0.5">
 
-    <floor id="my_floor" source="image" path="/home/tianfu/fission_fusion_controller_ws/src/fission_fusion_controller/experiments/empty.png"/>
+    <floor id="my_floor" source="image" path="EXPERIMENTS_DIR/empty.png"/>
 
     <box id="wall_n" size="10,0.1,0.2" movable="false"><body position="0,5,0"/></box>
     <box id="wall_s" size="10,0.1,0.2" movable="false"><body position="0,-5,0"/></box>
@@ -114,7 +114,7 @@
   <!-- * Visualization * -->
   <!-- ****************** -->
 
-  <!-- <visualization>
+  <visualization>
     <qt-opengl>
       <camera>
         <placements>
@@ -126,6 +126,6 @@
         </placements>
       </camera>
     </qt-opengl>
-  </visualization> -->
+  </visualization>
 
 </argos-configuration>
