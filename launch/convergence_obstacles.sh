@@ -55,6 +55,8 @@ ros2 launch fission_fusion_controller run.launch.py numbers:=42.0 \
                                                     isConCommunication:=true \
                                                     use_rviz:=true \
                                                     use_sim_time:=true \
+                                                    alpha:=8.0 \
+                                                    beta:=1.0 \
                                                     results_file_path:=${results_path}&
 ROS2_PID=$! # Save the process ID (PID) of ros2 launch
 

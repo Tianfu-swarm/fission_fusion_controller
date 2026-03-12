@@ -39,6 +39,8 @@ def generate_nodes(context, *args, **kwargs):
                     "n_groupsize": LaunchConfiguration('numbers'),
                     "follow_range": LaunchConfiguration('follow_range'),
                     "controller_type": "sffm", 
+                    "alpha": LaunchConfiguration('alpha'),
+                    "beta": LaunchConfiguration('beta'),
                 }],
                 remappings=[
                     ('/tf', 'tf'),
@@ -66,6 +68,8 @@ def generate_launch_description():
         DeclareLaunchArgument('early_converge_window', default_value='30'),
         DeclareLaunchArgument('numbers', default_value='20.0'),
         DeclareLaunchArgument('follow_range', default_value='2.0'),
+        DeclareLaunchArgument('alpha', default_value='8.0'),
+        DeclareLaunchArgument('beta', default_value='1.0'),
     ]
 
     rviz_node = Node(
