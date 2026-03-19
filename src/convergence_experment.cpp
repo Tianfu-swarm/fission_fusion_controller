@@ -127,7 +127,9 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         {
             initial_group_size = 1;
             stay_start_time = this->get_clock()->now();
-            wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
+            double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+            double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
+            wait_time = rclcpp::Duration::from_seconds(T);
             std::cout << "from random to stay" << std::endl;
             return STAY;
         }
@@ -152,10 +154,13 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         if (delta_distance < 0.5)
         {
             initial_group_size = 2;
+        
             stay_start_time = this->get_clock()->now();
-            wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
+            double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+            double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
+            wait_time = rclcpp::Duration::from_seconds(T);
             target_transform.child_frame_id.clear();
-            std::cout << "from FUSION to SATY" << std::endl;
+            // std::cout << "from FUSION to SATY" << std::endl;
             return STAY;
         }
 
@@ -300,9 +305,11 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
             {
                 if (actual_group_size > initial_group_size)
                 {
-                    std::cout << "actuall size is changed: " << actual_group_size << std::endl;
+                    // std::cout << "actuall size is changed: " << actual_group_size << std::endl;
                     initial_group_size = actual_group_size;
-                    wait_time = rclcpp::Duration::from_seconds(static_cast<double>(Waiting_time_scale_factor * initial_group_size));
+                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+                    double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
+                    wait_time = rclcpp::Duration::from_seconds(T);
                     stay_start_time = this->get_clock()->now();
                 }
                 else
@@ -311,8 +318,9 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
                     rclcpp::Duration elapsed = now - stay_start_time;
                     rclcpp::Duration remaining = wait_time - elapsed;
 
-                    rclcpp::Duration new_wait = rclcpp::Duration::from_seconds(
-                        static_cast<double>(Waiting_time_scale_factor * actual_group_size));
+                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+                    double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
+                    rclcpp::Duration new_wait = rclcpp::Duration::from_seconds(T);
 
                     if (new_wait < remaining)
                     {
@@ -344,8 +352,9 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         else if (actual_group_size > desired_subgroup_size + groupsize_tolerance)
         {
             auto follow_result = sffm_estimate_posibility_range(desired_subgroup_size, arena_area, actual_group_size);
-            double split_posibility = split_posibility_scale_factor * ((actual_group_size - desired_subgroup_size) / actual_group_size);
-            double follow_posibility = 1 - split_posibility;
+            double d_plus = std::max(0.0, (actual_group_size - desired_subgroup_size) / desired_subgroup_size);
+            double split_posibility = std::min(1.0, beta * d_plus);
+            double follow_posibility = 1.0 - split_posibility;
             double follow_radius = 2;
 
             sffm_choose_follow_target(follow_posibility, follow_radius);
@@ -359,7 +368,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
             {
                 target_transform.child_frame_id.clear();
                 Maintain_state_start_time = this->get_clock()->now();
-                std::cout << "from stay to stay, size: " << estimated_group_size << ", time: " << this->get_clock()->now().seconds() << std::endl;
+                // std::cout << "from stay to stay, size: " << estimated_group_size << ", time: " << this->get_clock()->now().seconds() << std::endl;
                 return STAY;
             }
         }

@@ -38,7 +38,7 @@ ALPHA=${1:-8.0}
 BETA=${2:-1.0}
 RESULTS_PATH=${3:-"$WS_DIR/src/fission_fusion_controller/data/result_$(date +"%Y%m%d%H%M")"}
 # Run the ROS 2 launch command in the background
-ros2 launch fission_fusion_controller run.launch.py numbers:=9.0 \
+ros2 launch fission_fusion_controller run.launch.py numbers:=42.0 \
                                                     desired_subgroup_size:=14.0 \
                                                     follow_range:=5.0 \
                                                     subgroup_size_sigma:=0.0 \
@@ -51,6 +51,7 @@ ros2 launch fission_fusion_controller run.launch.py numbers:=9.0 \
                                                     use_rviz:=true \
                                                     use_sim_time:=true \
                                                     alpha:=$ALPHA \
+                                                    T_max:=100.0 \
                                                     beta:=$BETA \
                                                     results_file_path:="$RESULTS_PATH"&
 ROS2_PID=$!

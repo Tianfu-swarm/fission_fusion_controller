@@ -84,8 +84,9 @@ public:
         this->declare_parameter<int>("early_converge_window", 20);
         this->declare_parameter<double>("n_groupsize", 40);
         this->declare_parameter<double>("follow_range", 40);
-        this->declare_parameter<double>("alpha", 8.0);
-        this->declare_parameter<double>("beta", 1.0);
+        this->declare_parameter<double>("alpha", 0.5);
+        this->declare_parameter<double>("T_max", 20.0);
+        this->declare_parameter<double>("beta", 0.5);
 
         this->results_file_path = this->get_parameter("results_file_path").as_string();
         this->isMinCommunication = this->get_parameter("isMinCommunication").as_bool();
@@ -98,8 +99,9 @@ public:
         this->early_converge_window = this->get_parameter("early_converge_window").as_int();
         this->n_groupsize = this->get_parameter("n_groupsize").as_double();
         this->follow_range = this->get_parameter("follow_range").as_double();
-        this->Waiting_time_scale_factor = this->get_parameter("alpha").as_double();
-        this->split_posibility_scale_factor = this->get_parameter("beta").as_double();
+        this->alpha = this->get_parameter("alpha").as_double();
+        this->T_max = this->get_parameter("T_max").as_double();
+        this->beta = this->get_parameter("beta").as_double();
 
         required_propagation_hops = early_converge_window;
         stability_window = early_converge_window * 2;
@@ -454,8 +456,10 @@ private:
     rclcpp::Duration Maintain_state_time = rclcpp::Duration::from_seconds(10.0);
     rclcpp::Time Maintain_state_start_time = this->get_clock()->now() - Maintain_state_time;
 
-   double Waiting_time_scale_factor;
-double split_posibility_scale_factor;
+    double T_max;
+    double alpha;
+    double beta;
+    double Waiting_time_scale_factor = 10;
 
     rclcpp::Time pd_control_last_time = this->get_clock()->now();
 

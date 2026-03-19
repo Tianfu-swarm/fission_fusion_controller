@@ -1194,7 +1194,7 @@ std::pair<double, double> fissionFusion::sffm_estimate_posibility_range(double e
     double estimate_follow_range = estimate_range(best_mu, best_sigma, nums_robots, arena_area);
 
     // 用后删除
-    estimate_posibility = desired_subgroup_size / nums_robots;
+    estimate_posibility = expected_subgroupsize / nums_robots;
     estimate_follow_range = follow_range;
 
     return std::make_pair(estimate_posibility, estimate_follow_range);

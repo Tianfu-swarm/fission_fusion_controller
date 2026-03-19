@@ -40,6 +40,7 @@ def generate_nodes(context, *args, **kwargs):
                     "follow_range": LaunchConfiguration('follow_range'),
                     "controller_type": "sffm", 
                     "alpha": LaunchConfiguration('alpha'),
+                    "T_max": LaunchConfiguration('T_max'),
                     "beta": LaunchConfiguration('beta'),
                 }],
                 remappings=[
@@ -68,8 +69,9 @@ def generate_launch_description():
         DeclareLaunchArgument('early_converge_window', default_value='30'),
         DeclareLaunchArgument('numbers', default_value='20.0'),
         DeclareLaunchArgument('follow_range', default_value='2.0'),
-        DeclareLaunchArgument('alpha', default_value='8.0'),
-        DeclareLaunchArgument('beta', default_value='1.0'),
+        DeclareLaunchArgument('alpha', default_value='0.5'),
+        DeclareLaunchArgument('T_max', default_value='20.0'),
+        DeclareLaunchArgument('beta', default_value='0.5'),
     ]
 
     rviz_node = Node(
