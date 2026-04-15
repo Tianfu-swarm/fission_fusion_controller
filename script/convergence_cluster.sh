@@ -49,12 +49,12 @@ $APPTAINER -c $APPTAINER_CONF exec --cleanenv --bind $WS:/ros2_ws $SIF bash -c '
         use_rviz:=false \
         use_sim_time:=true \
         alpha:='"$ALPHA"' \
-	T_max:=100.0 \
+	    T_max:=20.0 \
         beta:='"$BETA"' \
         results_file_path:='"$RESULTS_PATH"' &
     ROS2_PID=$!
 
-    sleep 900
+    sleep 1200
 
     kill $ROS2_PID $ARGOS_PID 2>/dev/null
     wait $ROS2_PID $ARGOS_PID 2>/dev/null

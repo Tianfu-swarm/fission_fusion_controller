@@ -127,7 +127,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         {
             initial_group_size = 1;
             stay_start_time = this->get_clock()->now();
-            double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+            double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / (desired_subgroup_size));
             double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
             wait_time = rclcpp::Duration::from_seconds(T);
             std::cout << "from random to stay" << std::endl;
@@ -156,7 +156,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
             initial_group_size = 2;
         
             stay_start_time = this->get_clock()->now();
-            double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+            double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / (desired_subgroup_size));
             double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
             wait_time = rclcpp::Duration::from_seconds(T);
             target_transform.child_frame_id.clear();
@@ -293,7 +293,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
     case STAY:
     {
         double actual_group_size = std::round(estimated_group_size);
-        if (this->get_clock()->now() - Maintain_state_start_time < rclcpp::Duration::from_seconds(2.0))
+        if (this->get_clock()->now() - Maintain_state_start_time < rclcpp::Duration::from_seconds(0.5))
         {
             target_transform.child_frame_id.clear();
             return STAY;
@@ -307,7 +307,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
                 {
                     // std::cout << "actuall size is changed: " << actual_group_size << std::endl;
                     initial_group_size = actual_group_size;
-                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / (desired_subgroup_size));
                     double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
                     wait_time = rclcpp::Duration::from_seconds(T);
                     stay_start_time = this->get_clock()->now();
@@ -318,7 +318,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
                     rclcpp::Duration elapsed = now - stay_start_time;
                     rclcpp::Duration remaining = wait_time - elapsed;
 
-                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / desired_subgroup_size);
+                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / (desired_subgroup_size));
                     double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
                     rclcpp::Duration new_wait = rclcpp::Duration::from_seconds(T);
 
