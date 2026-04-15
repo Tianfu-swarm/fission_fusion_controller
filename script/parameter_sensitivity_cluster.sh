@@ -9,7 +9,6 @@
 #$ -l h_rt=02:00:00
 
 SCRIPT_DIR=/home/scc/tianfu.zhang/fission_fusion_controller/script
-mkdir -p $SCRIPT_DIR/logs
 WS=/home/scc/tianfu.zhang/ros2_ws
 
 ALPHAS=(1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0)
