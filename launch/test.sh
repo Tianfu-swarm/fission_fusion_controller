@@ -36,8 +36,8 @@ results_path="$WS_DIR/src/fission_fusion_controller/data/result_${timestamp_resu
 
 RESULTS_PATH=${3:-"$WS_DIR/src/fission_fusion_controller/data/result_$(date +"%Y%m%d%H%M")"}
 # Run the ROS 2 launch command in the background
-ros2 launch fission_fusion_controller run.launch.py numbers:=6.0 \
-                                                    desired_subgroup_size:=3.0 \
+ros2 launch fission_fusion_controller run.launch.py numbers:=42.0 \
+                                                    desired_subgroup_size:=14.0 \
                                                     follow_range:=5.0 \
                                                     subgroup_size_sigma:=0.0 \
                                                     groupsize_tolerance:=0.0 \
@@ -49,7 +49,7 @@ ros2 launch fission_fusion_controller run.launch.py numbers:=6.0 \
                                                     use_rviz:=true \
                                                     use_sim_time:=true \
                                                     alpha:=0.5 \
-                                                    T_max:=10.0 \
+                                                    T_max:=20.0 \
                                                     beta:=0.5 \
                                                     results_file_path:="$RESULTS_PATH"&
 ROS2_PID=$!
@@ -63,7 +63,7 @@ sed "s|EXPERIMENTS_DIR|$EXPERIMENTS_DIR|g" \
 argos3 -c $TMP_ARGOS &
 ARGOS_PID=$!
 # Wait for 150 seconds before stopping
-sleep 300
+sleep 3000
 # Stop ARGoS3, ROS 2, rosbag, and RViz
 echo "Stopping ARGoS3, ROS 2, rosbag, and RViz for iteration $i"
 pkill -f argos3

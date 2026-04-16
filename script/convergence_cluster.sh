@@ -27,7 +27,7 @@ $APPTAINER -c $APPTAINER_CONF exec --cleanenv --bind $WS:/ros2_ws $SIF bash -c '
     EXPERIMENTS_DIR=/ros2_ws/src/fission_fusion_controller/experiments
     TMP_ARGOS=/tmp/argos_$$.argos
     sed "s|EXPERIMENTS_DIR|$EXPERIMENTS_DIR|g" \
-        $EXPERIMENTS_DIR/convergence.argos > $TMP_ARGOS
+        $EXPERIMENTS_DIR/test.argos > $TMP_ARGOS
     echo "TMP_ARGOS=$TMP_ARGOS"
 
     argos3 -c $TMP_ARGOS &
