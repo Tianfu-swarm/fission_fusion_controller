@@ -11,7 +11,7 @@
 SCRIPT_DIR=/home/scc/tianfu.zhang/fission_fusion_controller/script
 WS=/home/scc/tianfu.zhang/ros2_ws
 
-ALPHAS=(1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0)
+ALPHAS=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
 BETAS=(0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
 REPEATS=10
 
