@@ -104,7 +104,7 @@
   <!-- * Visualization * -->
   <!-- ****************** -->
 
-  <visualization>
+  <!-- <visualization>
     <qt-opengl>
       <camera>
         <placements>
@@ -116,6 +116,6 @@
         </placements>
       </camera>
     </qt-opengl>
-  </visualization>
+  </visualization> -->
 
 </argos-configuration>
