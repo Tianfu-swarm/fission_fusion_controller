@@ -28,7 +28,6 @@ void fissionFusion::convergence_controller_step()
         return;
     }
 
-
     // pub rab
     Pub_rab();
 
@@ -40,15 +39,16 @@ void fissionFusion::convergence_controller_step()
     if (current_state != STAY)
     {
         estimated_group_size = 1;
+        smooth_history.clear();
     }
     else
     {
         size = extrema_propagation();
-  
+
         if (size > 0) // 只有估计了一个新值时才添加 && estimated_group_size != size
         {
             estimated_group_size = size;
-            estimated_group_size = smoothed_estimate_with_window(estimated_group_size, 2, 0.9);
+            estimated_group_size = smoothed_estimate_with_window(estimated_group_size, 2, 0.9, false);
         }
     }
 
@@ -115,7 +115,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         }
         else
         {
-            follow_posibility = 1;
+            follow_posibility = 0.95;
             follow_radius = follow_range;
         }
 
@@ -154,7 +154,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         if (delta_distance < 0.5)
         {
             initial_group_size = 2;
-        
+
             stay_start_time = this->get_clock()->now();
             double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / (desired_subgroup_size));
             double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
@@ -278,7 +278,7 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
         const double y = fission_transform.transform.translation.y;
         const double distance = std::sqrt(x * x + y * y);
 
-        if (distance > 3)
+        if (distance > follow_range)
         {
             std::cout << "from fission to random walk, far to target: " << distance << std::endl;
             fission_transform.child_frame_id.clear();
@@ -301,79 +301,71 @@ fissionFusion::robot_state fissionFusion::update_state_convergence(robot_state c
 
         if (actual_group_size < desired_subgroup_size + groupsize_tolerance)
         {
-            if (actual_group_size != initial_group_size)
-            {
-                if (actual_group_size > initial_group_size)
-                {
-                    // std::cout << "actuall size is changed: " << actual_group_size << std::endl;
-                    initial_group_size = actual_group_size;
-                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / (desired_subgroup_size));
-                    double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
-                    wait_time = rclcpp::Duration::from_seconds(T);
-                    stay_start_time = this->get_clock()->now();
-                }
-                else
-                {
-                    rclcpp::Time now = this->get_clock()->now();
-                    rclcpp::Duration elapsed = now - stay_start_time;
-                    rclcpp::Duration remaining = wait_time - elapsed;
-
-                    double d_minus = std::max(0.0, (desired_subgroup_size - initial_group_size) / (desired_subgroup_size));
-                    double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
-                    rclcpp::Duration new_wait = rclcpp::Duration::from_seconds(T);
-
-                    if (new_wait < remaining)
-                    {
-                        wait_time = new_wait;
-                        stay_start_time = this->get_clock()->now();
-                    }
-                    initial_group_size = actual_group_size;
-                }
-            }
+            double d_minus = std::max(0.0, (desired_subgroup_size - actual_group_size) / desired_subgroup_size);
+            double T = std::max(0.0, T_max * (1.0 - alpha * d_minus));
 
             rclcpp::Time time_now = this->get_clock()->now();
-            if ((time_now - stay_start_time).seconds() > wait_time.seconds())
+            if ((time_now - stay_start_time).seconds() > T)
             {
-                std::cout << "\033[1;32m" << "[Stay]->[Fission]" << "\033[0m"
-                          << " Waiting time Run out,"
-                          << "start time = " << stay_start_time.seconds()
-                          << ", wait time = " << wait_time.seconds()
-                          << " initial_group_size:" << initial_group_size
-                          << std::endl;
-                fission_transform.child_frame_id.clear();
-                return FISSION;
+                fission_consecutive_count++;
+
+                if (fission_consecutive_count >= fission_consecutive_threshold)
+                {
+                    std::cout << "\033[1;32m" << "[Stay]->[Fission]" << "\033[0m"
+                              << " Waiting time Run out,"
+                              << "start time = " << stay_start_time.seconds()
+                              << ", T = " << T
+                              << " actual_group_size:" << actual_group_size
+                              << std::endl;
+                    fission_consecutive_count = 0;
+                    fission_transform.child_frame_id.clear();
+                    return FISSION;
+                }
             }
             else
             {
-                target_transform.child_frame_id.clear();
-                return STAY;
+                fission_consecutive_count = 0; // 恢复正常就清零
             }
+
+            target_transform.child_frame_id.clear();
+            larger_consecutive_count = 0;
+            return STAY;
         }
         else if (actual_group_size > desired_subgroup_size + groupsize_tolerance)
         {
-            auto follow_result = sffm_estimate_posibility_range(desired_subgroup_size, arena_area, actual_group_size);
-            double d_plus = std::max(0.0, (actual_group_size - desired_subgroup_size) / desired_subgroup_size);
-            double split_posibility = std::min(1.0, beta * d_plus);
-            double follow_posibility = 1.0 - split_posibility;
-            double follow_radius = 2;
+            larger_consecutive_count++;
+            if (larger_consecutive_count >= fission_consecutive_threshold)
+            {
+                auto follow_result = sffm_estimate_posibility_range(desired_subgroup_size, arena_area, actual_group_size);
+                double d_plus = std::max(0.0, (actual_group_size - desired_subgroup_size) / desired_subgroup_size);
+                double split_posibility = std::min(1.0, beta * d_plus);
+                double follow_posibility = 1.0 - split_posibility;
+                double follow_radius = 2;
 
-            sffm_choose_follow_target(follow_posibility, follow_radius);
-            if (target_transform.header.frame_id == "non-follower")
-            {
-                std::cout << "[larger] from stay to fission, larger than desired size: " << actual_group_size << std::endl;
-                fission_transform.child_frame_id.clear();
-                return FISSION;
+                sffm_choose_follow_target(follow_posibility, follow_radius);
+                if (target_transform.header.frame_id == "non-follower")
+                {
+                    std::cout << "[larger] from stay to fission, larger than desired size: " << actual_group_size << std::endl;
+                    fission_transform.child_frame_id.clear();
+                    fission_consecutive_count = 0;
+                    larger_consecutive_count = 0;
+                    return FISSION;
+                }
+                else
+                {
+                    larger_consecutive_count = 0;
+                    target_transform.child_frame_id.clear();
+                    Maintain_state_start_time = this->get_clock()->now();
+                    return STAY;
+                }
             }
-            else
-            {
-                target_transform.child_frame_id.clear();
-                Maintain_state_start_time = this->get_clock()->now();
-                // std::cout << "from stay to stay, size: " << estimated_group_size << ", time: " << this->get_clock()->now().seconds() << std::endl;
-                return STAY;
-            }
+            target_transform.child_frame_id.clear();
+            return STAY;
         }
         else
         {
+            larger_consecutive_count = 0;
+            stay_start_time = this->get_clock()->now();
             target_transform.child_frame_id.clear();
             return STAY;
         }
@@ -398,7 +390,7 @@ void fissionFusion::execute_state_behavior_convergence(robot_state state)
             /*mean_ω=*/0.0, /*std_ω=*/0.5);
         geometry_msgs::msg::Twist twist_msg;
 
-        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning(1.5);
+        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning(1);
 
         if (local_planning_target.child_frame_id == "avoid_target")
         {
@@ -473,7 +465,7 @@ void fissionFusion::execute_state_behavior_convergence(robot_state state)
             /*mean_ω=*/0.0, /*std_ω=*/0.5);
         geometry_msgs::msg::Twist twist_msg;
 
-        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning(1.5);
+        geometry_msgs::msg::TransformStamped local_planning_target = local_path_planning(1);
 
         if (local_planning_target.child_frame_id == "avoid_target")
         {
@@ -510,8 +502,7 @@ void fissionFusion::execute_state_behavior_convergence(robot_state state)
 
         std::pair<double, double> control_command;
 
-        geometry_msgs::msg::TransformStamped GLJTarget = computeGLJTarget();
-
+        geometry_msgs::msg::TransformStamped GLJTarget = computeGLJTarget(0.5, 1.0);
         control_command = pd_control_to_target(GLJTarget);
 
         geometry_msgs::msg::Twist twist_msg;

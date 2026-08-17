@@ -455,6 +455,9 @@ private:
     // 维持stay状态
     rclcpp::Duration Maintain_state_time = rclcpp::Duration::from_seconds(10.0);
     rclcpp::Time Maintain_state_start_time = this->get_clock()->now() - Maintain_state_time;
+    int fission_consecutive_threshold = 50;
+    int fission_consecutive_count = 0;
+    int larger_consecutive_count = 0;
 
     double T_max;
     double alpha;
@@ -473,7 +476,7 @@ private:
      * extrema_propagation
      **************************************************************************/
     double extrema_propagation();
-    double smoothed_estimate_with_window(double new_estimate, double window_size, double size_decay);
+    double smoothed_estimate_with_window(double new_estimate, double window_size, double size_decay, bool use_median);
     std::deque<double> smooth_history;
     int no_message_steps = 0;
     void initialize_vector();

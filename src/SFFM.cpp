@@ -1284,9 +1284,9 @@ std::pair<double, double> fissionFusion::random_walk(double mean_v,
 geometry_msgs::msg::TransformStamped fissionFusion::computeGLJTarget(double stable_distance, double force)
 {
     const int max_neighbors = 5; // K
-    double sigma = stable_distance, epsilon = 0.3;
+    double sigma = stable_distance, epsilon = 0.1;
     const double n = 4.0, m = 2.0;
-    double effective_range = follow_range;
+    double effective_range = follow_range / 2;
     double max_force = force;
 
     double fx_total = 0.0, fy_total = 0.0;
@@ -1405,6 +1405,31 @@ geometry_msgs::msg::TransformStamped fissionFusion::computeGLJTarget(double stab
                 fx_total += f_mag * (node.dx / d);
                 fy_total += f_mag * (node.dy / d);
             }
+        }
+
+        // 排斥模式
+        double repulse_range_min = follow_range / 2.0; // 排斥区域内边界
+        double repulse_range_max = follow_range * 0.6; // 排斥区域外边界
+        double repulse_force = 0.02;
+
+        for (const auto &e : tf_entries)
+        {
+            if (e.d2 < 1e-8)
+                continue;
+            if (e.is_on_gray)
+                continue;
+
+            const double d = std::sqrt(e.d2);
+
+            if (d <= repulse_range_min || d >= repulse_range_max)
+                continue;
+
+            // 线性排斥力：距离越近，力越大
+            double t = 1.0 - (d - repulse_range_min) / (repulse_range_max - repulse_range_min);
+            t = 1;
+            // t: 在 repulse_range_min 时 t=1（最大），在 repulse_range_max 时 t=0（为0）
+            fx_total -= repulse_force * t * (e.dx / d);
+            fy_total -= repulse_force * t * (e.dy / d);
         }
     }
 

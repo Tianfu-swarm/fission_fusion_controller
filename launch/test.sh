@@ -41,15 +41,15 @@ ros2 launch fission_fusion_controller run.launch.py numbers:=42.0 \
                                                     follow_range:=5.0 \
                                                     subgroup_size_sigma:=0.0 \
                                                     groupsize_tolerance:=0.0 \
-                                                    K:=800 \
-                                                    early_converge_window:=9 \
+                                                    K:=1000 \
+                                                    early_converge_window:=4 \
                                                     isModelworks:=false \
                                                     isMinCommunication:=true \
-                                                    isConCommunication:=true \
+                                                    isConCommunication:=false \
                                                     use_rviz:=true \
                                                     use_sim_time:=true \
-                                                    alpha:=0.5 \
-                                                    T_max:=20.0 \
+                                                    alpha:=0.8 \
+                                                    T_max:=50.0 \
                                                     beta:=0.5 \
                                                     results_file_path:="$RESULTS_PATH"&
 ROS2_PID=$!
@@ -63,7 +63,7 @@ sed "s|EXPERIMENTS_DIR|$EXPERIMENTS_DIR|g" \
 argos3 -c $TMP_ARGOS &
 ARGOS_PID=$!
 # Wait for 150 seconds before stopping
-sleep 3000
+sleep 300
 # Stop ARGoS3, ROS 2, rosbag, and RViz
 echo "Stopping ARGoS3, ROS 2, rosbag, and RViz for iteration $i"
 pkill -f argos3

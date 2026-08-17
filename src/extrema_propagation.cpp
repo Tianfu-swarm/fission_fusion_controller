@@ -265,19 +265,31 @@ double fissionFusion::extrema_propagation()
     return -1; //- 1; // 否则返回无效估计，继续等待下一步推进
 }
 
-double fissionFusion::smoothed_estimate_with_window(double new_estimate, double window_size, double size_decay)
+double fissionFusion::smoothed_estimate_with_window(double new_estimate, double window_size, double size_decay, bool use_median)
 {
     size_t W = window_size;
     double decay = size_decay;
 
-    if (smooth_history.size() >= W)
-        smooth_history.pop_front();
     smooth_history.push_back(new_estimate);
 
     double weighted_sum = 0.0, weight_total = 0.0;
-    for (size_t i = 0; i < smooth_history.size(); ++i)
+    size_t n = smooth_history.size();
+    size_t start = (n >= W) ? n - W : 0; // 只取最新 W 个
+
+    if (use_median)
     {
-        double weight = std::pow(decay, smooth_history.size() - i - 1);
+        std::vector<double> sorted(smooth_history.begin() + start, smooth_history.end());
+        std::sort(sorted.begin(), sorted.end());
+        size_t m = sorted.size();
+        if (m % 2 == 1)
+            return sorted[m / 2];
+        else
+            return (sorted[m / 2 - 1] + sorted[m / 2]) / 2.0;
+    }
+
+    for (size_t i = start; i < n; ++i)
+    {
+        double weight = std::pow(decay, n - i - 1);
         weighted_sum += weight * smooth_history[i];
         weight_total += weight;
     }
